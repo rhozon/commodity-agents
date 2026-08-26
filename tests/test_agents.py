@@ -93,7 +93,7 @@ def test_trava_vale_para_todas_as_camadas(tmp_path):
 
 
 def test_econometrista_forca_escada_com_maiuscula():
-    """Achado 1: reprovação em maiúsculas (comum em erros de R) deve forçar escada."""
+    """Reprovacao em maiusculas (comum em erro vindo do R) tem de forcar a escada."""
     llm = LLMFake([{"familia": "msgarch", "justificativa": "insisto"}])
     # Simular mensagem de erro do R com MSGARCH em maiúsculas
     fam = Econometrista(llm).escolher("p", tentativa=2, reprovacoes=["MSGARCH nao convergiu"])
@@ -101,7 +101,7 @@ def test_econometrista_forca_escada_com_maiuscula():
 
 
 def test_econometrista_detecta_violacao_contrato_reprovacoes():
-    """Achado 2: se reprovações não contém nome de família, contrato foi violado."""
+    """Reprovacao sem nome de familia viola o contrato de `escolher`."""
     llm = LLMFake([{"familia": "garch", "justificativa": "recuo"}])
     # Motivo sem nenhum nome de família conhecido — viola o contrato
     with pytest.raises(ValueError, match="contrato"):

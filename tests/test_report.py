@@ -1,9 +1,11 @@
 """Testes para agro.report: grafico da serie e relatorio em tres camadas.
 
-Contratos usados aqui sao os de src/agro/types.py no estado ATUAL (pos-onda
-de correcao), nao os do brief original -- ver campos novos em ModelFit
-(vol_por_regime, vol_atual, ljung_box_pvalor, arch_lm_pvalor) e em Backtest
-(mape_baseline, rmse_baseline, nota, bateu_baseline).
+As fixtures cobrem os campos de `agro.types` que o relatorio precisa saber
+mostrar: em ModelFit, vol_por_regime/vol_atual (a contribuicao dos modelos de
+volatilidade) e ljung_box_pvalor/arch_lm_pvalor (a prova de que a premissa
+foi checada); em Backtest, mape_baseline/rmse_baseline/bateu_baseline (MAPE
+sem referencia nao diz se o modelo presta) e `nota` (por que o modelo empatou
+com o passeio aleatorio).
 """
 from pathlib import Path
 

@@ -40,37 +40,35 @@ def _llm(familias, corpo="Analise sem numeros novos."):
     return LLMFake(respostas)
 
 
-# Divergencia entre o brief (`.superpowers/sdd/task-9-brief.md`) e o codigo
-# atual: `models.diagnose` hoje reprova qualquer ajuste que nao traga
-# `ljung_box_pvalor`/`arch_lm_pvalor` (ausencia de teste de residuo conta
-# como motivo de reprovacao, nao so p-valor baixo -- ver
-# `agro.models.diagnose` e `tests/test_models.py::test_diagnose_reprova_por_
-# ausencia_de_testes_de_residuo`). O brief mockava `fit_model` sem esses dois
-# campos e esperava aprovacao de primeira; com o codigo atual isso reprovaria
-# sempre. Os mocks abaixo incluem os dois p-valores acima do limiar para que
-# o Critico realmente aprove -- o codigo manda.
+# `models.diagnose` reprova qualquer ajuste que nao traga
+# `ljung_box_pvalor`/`arch_lm_pvalor`: a AUSENCIA de teste de residuo conta
+# como motivo de reprovacao, nao so o p-valor baixo (ver `agro.models.
+# diagnose` e `test_diagnose_reprova_por_ausencia_de_testes_de_residuo`). Por
+# isso um mock de `fit_model` que quer ser APROVADO precisa trazer os dois
+# p-valores acima do limiar -- sem eles o Critico reprovaria sempre e todo
+# teste de caminho feliz viraria teste de teto estourado.
 def _fit_aprovado(familia, log_lik=900.0, aic=-1800.0):
     return ModelFit(familia, True, {"a": 0.01}, log_lik, aic,
                     ljung_box_pvalor=0.6, arch_lm_pvalor=0.7)
 
 
-# Achado 3: `models.backtest` dispara `Rscript.exe` de verdade e custa
-# segundos por chamada. Nos testes cujo alvo e o laco de critica (nao o
-# backtest), o resultado nem e verificado -- so o custo do subprocesso R
-# fica, sem comprar garantia nenhuma. Este fake mocka `models.backtest` para
-# esses testes; o UNICO teste que ainda chama o R de verdade e o de caminho
-# feliz abaixo (achado 2), que e quem de fato confere `res.backtest`.
+# `models.backtest` dispara `Rscript.exe` de verdade e custa segundos por
+# chamada. Nos testes cujo alvo e o laco de critica (nao o backtest), o
+# resultado nem e verificado -- so o custo do subprocesso R fica, sem comprar
+# garantia nenhuma. Este fake substitui `models.backtest` nesses testes; o
+# UNICO que ainda chama o R de verdade e o de caminho feliz abaixo, que e
+# quem de fato confere `res.backtest`.
 def _backtest_falso(horizonte=20, mape=1.5, rmse=0.4, cobertura_ic=0.95,
                     mape_baseline=2.1, rmse_baseline=0.5, nota=""):
     return Backtest(horizonte, mape, rmse, cobertura_ic, mape_baseline, rmse_baseline, nota)
 
 
 def test_caminho_feliz_uma_tentativa(ambiente, monkeypatch):
-    """Achado 2: unico teste que verifica `res.backtest` no caminho em que o
-    backtest FUNCIONA (os outros seis testes deste arquivo mockam
-    `models.backtest` -- ver achado 3 -- porque o backtest e incidental a
-    eles). `models.backtest` nao e mockado aqui de proposito: e o unico
-    teste de integracao real com o R que a suite mantem."""
+    """Unico teste que verifica `res.backtest` no caminho em que o backtest
+    FUNCIONA -- os demais deste arquivo substituem `models.backtest` porque
+    ele e incidental a eles (ver `_backtest_falso`). Aqui ele nao e
+    substituido de proposito: e o teste de integracao real com o R que a
+    suite mantem no nivel do orquestrador."""
     monkeypatch.setattr(orchestrator.models, "fit_model", lambda s, f: _fit_aprovado(f))
     res = orchestrator.rodar("o que move o preco?", "milho", _llm(["msgarch"]))
     assert res.tentativas == 1 and res.teto_estourado is False
@@ -165,7 +163,7 @@ def test_teto_estourado_marca_e_nao_levanta(ambiente, monkeypatch):
 
 
 def test_aviso_teto_estourado_nao_promete_selecao_de_melhor_ajuste(ambiente, monkeypatch):
-    """Achado 1: a escada de `Econometrista.escolher` e uma progressao fixa
+    """A escada de `Econometrista.escolher` e uma progressao fixa
     -- proximo degrau ainda nao tentado -- sem nenhuma comparacao de AIC ou
     verossimilhanca entre as tentativas. O que sobra quando o teto estoura e
     o ULTIMO ajuste tentado, que pode ser o pior de todos. O aviso nao pode

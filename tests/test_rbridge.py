@@ -68,7 +68,7 @@ def test_script_ausente_erra_cedo():
         rbridge.chamar_r("nao_existe.R", {})
 
 
-# --- Achado 1: familia "garch" nao tinha nenhum teste ---------------------
+# --- familia "garch": o ramo do rugarch, ponta a ponta --------------------
 
 def test_garch_converge_em_serie_com_volatilidade_agrupada():
     saida = rbridge.chamar_r("fit_model.R", {
@@ -106,7 +106,7 @@ def test_garch_vol_por_regime_preenchido_positivo_finito():
     assert vol[0] > 0
 
 
-# --- Achado 2: "vol_por_regime" tem que significar a mesma coisa em ---------
+# --- "vol_por_regime" significa a mesma coisa nas tres familias ------------
 # --- todas as familias (estrutural de longo prazo), com "vol_atual" ---------
 # --- separado para a volatilidade condicional do ultimo instante. ----------
 
@@ -143,7 +143,7 @@ def test_garch_vol_por_regime_e_estrutural_nao_condicional_recente():
     assert diferenca_relativa > 0.2
 
 
-# --- Achado 3: timeout do subprocess tinha que virar RuntimeError em pt-br -
+# --- timeout do subprocess vira RuntimeError em portugues ------------------
 
 # --- Correcao final: diagnosticos de residuo (Ljung-Box e ARCH-LM) --------
 
