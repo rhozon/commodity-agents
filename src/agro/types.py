@@ -1,6 +1,6 @@
 """Contratos entre as pecas. Objeto tipado, nunca texto solto."""
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal
 
 Familia = Literal["msgarch", "garch", "arima"]
 

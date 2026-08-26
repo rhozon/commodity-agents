@@ -1,5 +1,3 @@
-import os
-from pathlib import Path
 import pytest
 from agro import config
 from agro.types import Commodity
