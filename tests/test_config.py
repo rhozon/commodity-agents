@@ -22,4 +22,31 @@ def test_rscript_path_erra_com_mensagem_util(monkeypatch):
     monkeypatch.setenv("AGRO_RSCRIPT", r"C:\nao\existe\Rscript.exe")
     with pytest.raises(FileNotFoundError) as e:
         config.rscript_path()
-    assert "AGRO_RSCRIPT" in str(e.value)
+    msg = str(e.value)
+    # A mensagem cita as TRES formas de achar o Rscript, nao so a variavel.
+    assert "AGRO_RSCRIPT" in msg
+    assert "PATH" in msg
+    assert config.RSCRIPT_PADRAO in msg
+
+
+def test_rscript_path_acha_no_path_sem_variavel(monkeypatch, tmp_path):
+    """Sem AGRO_RSCRIPT, o PATH responde antes do caminho padrao de Windows.
+
+    E o caso de qualquer Linux ou macOS com R instalado normalmente: sem esta
+    via o projeto morria exibindo um caminho de Windows com versao pinada.
+    """
+    falso = tmp_path / "Rscript"
+    falso.write_text("")
+    monkeypatch.delenv("AGRO_RSCRIPT", raising=False)
+    monkeypatch.setattr(config.shutil, "which",
+                        lambda nome: str(falso) if nome == "Rscript" else None)
+    assert config.rscript_path() == str(falso)
+
+
+def test_rscript_path_erra_quando_nao_ha_r_em_lugar_nenhum(monkeypatch):
+    monkeypatch.delenv("AGRO_RSCRIPT", raising=False)
+    monkeypatch.setattr(config.shutil, "which", lambda nome: None)
+    monkeypatch.setattr(config, "RSCRIPT_PADRAO", r"C:\nao\existe\Rscript.exe")
+    with pytest.raises(FileNotFoundError) as e:
+        config.rscript_path()
+    assert "PATH" in str(e.value) and "AGRO_RSCRIPT" in str(e.value)
