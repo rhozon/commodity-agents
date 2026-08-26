@@ -126,7 +126,12 @@ nao viaja com o codigo.
   Redator pode citar em QUALQUER contexto de prosa sem que a trava reclame.
   Nao ha correcao facil: apertar a tolerancia de inteiros quebraria a
   decisao 1 (tolerancia pela precisao ESCRITA) para todo numero curto
-  legitimo.
+  legitimo. Cada valor NOVO que entra em `valores_rotulados()` liberta mais
+  um inteiro por esse caminho: `types.Z_IC_95 = 1.96`, por exemplo, existe
+  para o Redator poder escrever "o quantil de 1,96" -- e o preco disso e que
+  "2" passou a cair na faixa de +-0.5 dele, inclusive marcado ("subiu 2%",
+  "R$ 2"). O ganho compensa (proibir uma constante deterministica e correta
+  derrubava execucao boa), mas o custo e este e esta escrito.
 
 - NADA IMPEDE TROCAR O ROTULO. "o RMSE do backtest foi 4.53" passa mesmo que
   4.53 seja o MAPE, nao o RMSE -- a trava so confere se o numero existe em

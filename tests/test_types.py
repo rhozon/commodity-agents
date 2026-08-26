@@ -162,6 +162,10 @@ class TestRunResultValoresPermitidos:
             + 1  # nivel_ic (0.95): cobertura_ic guarda a cobertura OBSERVADA,
             #      nunca o nivel do intervalo -- sem isto "intervalo de 95%"
             #      era tratado como numero inventado.
+            + 1  # z_ic_95 (1.96): o quantil de 97,5% que define a banda.
+            #      "o quantil de 1,96" e frase normal em texto econometrico,
+            #      e sem esta entrada ela derrubava a execucao por citar uma
+            #      constante deterministica e correta.
         )
         permitidos = result.valores_permitidos()
         # Sem colisões, esperamos exatamente esse número

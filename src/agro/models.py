@@ -36,14 +36,9 @@ import numpy as np
 import pandas as pd
 
 from agro import rbridge
-from agro.types import Backtest, Diagnosis, ModelFit
+from agro.types import Backtest, Diagnosis, ModelFit, Z_IC_95
 
 MIN_OBS = 100
-
-# Quantil normal de 97,5% -- as duas caudas somam 5%, entao a banda do
-# backtest e um intervalo de 95%. Escrito como constante nomeada para nao
-# ficar um 1.96 solto no meio da conta.
-Z_IC_95 = 1.96
 
 # Nivel de significancia dos testes de residuo (Ljung-Box e ARCH-LM) usados
 # em diagnose(). 5% e o nivel convencional para testes de diagnostico de
