@@ -32,6 +32,16 @@ defasagens_teste <- function(n) max(1L, min(10L, floor(n / 5)))
 # Ljung-Box: H0 = residuos nao tem autocorrelacao remanescente ate a
 # defasagem `lag`. p-valor baixo = rejeita H0 = sobrou estrutura temporal
 # que o modelo deveria ter capturado.
+#
+# `fitdf` fica no padrao (0), e isso significa coisas diferentes conforme a
+# familia. Em msgarch e garch esta CORRETO: as duas especificacoes fixam a
+# media em zero (`include.mean = FALSE`, `armaOrder = c(0,0)`), nenhum
+# parametro de media foi estimado, e nao ha grau de liberdade a descontar.
+# No ramo arima e PERMISSIVO: `auto.arima` estima p+q parametros de media, e
+# o correto seria descontar p+q -- com fitdf = 0 a distribuicao de referencia
+# tem graus de liberdade demais, o p-valor sai maior do que deveria e o teste
+# reprova menos do que deveria. O valor nao foi alterado aqui de proposito:
+# mudar o criterio de reprovacao muda todos os resultados ja publicados.
 ljung_box_pvalor <- function(residuos, lag) {
   resultado <- try(Box.test(residuos, lag = lag, type = "Ljung-Box")$p.value, silent = TRUE)
   if (inherits(resultado, "try-error")) NA_real_ else as.numeric(resultado)
