@@ -49,6 +49,13 @@ class ModelFit:
     Os campos novos vao depois de `mensagem` para nao quebrar a construcao
     posicional de seis argumentos ja usada nos testes e na propria fachada.
 
+    `parametros_nao_finitos` guarda o NOME dos parametros que o R devolveu
+    como NaN ou infinito (o jsonlite serializa os dois como string: "NaN",
+    "Inf", "-Inf"). Eles nao entram em `parametros`, que so aceita float
+    finito, mas tambem nao podem sumir: parametro nao finito e a assinatura
+    de um ajuste degenerado e `models.diagnose` reprova por causa dele. A
+    ausencia de um parametro e coisa diferente, e nao aparece nesta lista.
+
     `ljung_box_pvalor` e `arch_lm_pvalor` sao os diagnosticos de residuo que
     o Critico usa para checar premissa de verdade (ver `models.diagnose`):
     autocorrelacao remanescente e heterocedasticidade nao capturada. Vem do
@@ -67,6 +74,7 @@ class ModelFit:
     vol_atual: float | None = None
     ljung_box_pvalor: float | None = None
     arch_lm_pvalor: float | None = None
+    parametros_nao_finitos: list[str] = field(default_factory=list)
 
 
 @dataclass
