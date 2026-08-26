@@ -179,7 +179,13 @@ def render_report(res: RunResult, corpo_md: str) -> str:
     for troca in res.bundle.trocas_de_fonte:
         linhas += [f"> **Fonte trocada:** {troca}", ""]
     if res.grafico:
-        linhas += [f"![Serie de {res.commodity}]({res.grafico})", ""]
+        # BASENAME, nunca o caminho absoluto: o grafico e sempre gravado ao
+        # lado do relatorio (quem chama `orchestrator.rodar` deriva um
+        # destino do outro), e um caminho absoluto quebraria a imagem para
+        # quem le o markdown no GitHub ou depois de mover a pasta. Este e o
+        # unico lugar que decide como a imagem e referenciada -- antes havia
+        # uma reescrita de string em `run.py` fazendo o mesmo por fora.
+        linhas += [f"![Serie de {res.commodity}]({Path(res.grafico).name})", ""]
 
     linhas += ["## Previsao", "", corpo_md, "", "## Drivers", "",
                "Ver decomposicao no corpo acima.", "", "## Implicacao de decisao", "",
