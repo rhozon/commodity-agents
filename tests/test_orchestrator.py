@@ -25,10 +25,18 @@ def ambiente(tmp_path, monkeypatch):
     return bundle
 
 
+def _resposta_do_redator(previsao="Analise sem numeros novos.",
+                         drivers="Drivers sem numeros novos.",
+                         implicacao="Implicacao sem numeros novos."):
+    """O esquema do Redator tem um campo por camada do relatorio."""
+    return {"previsao": previsao, "drivers": drivers,
+            "implicacao": implicacao, "confianca": "media"}
+
+
 def _llm(familias, corpo="Analise sem numeros novos."):
     respostas = [{"inicio": "2018-01-01", "fim": "2019-12-01", "justificativa": "j"}]
     respostas += [{"familia": f, "justificativa": "j"} for f in familias]
-    respostas += [{"corpo": corpo, "confianca": "media"}]
+    respostas += [_resposta_do_redator(previsao=corpo)]
     return LLMFake(respostas)
 
 
@@ -221,8 +229,8 @@ def test_trava_falha_retenta_e_sucede(ambiente, monkeypatch):
     respostas = [
         {"inicio": "2018-01-01", "fim": "2019-12-01", "justificativa": "j"},
         {"familia": "msgarch", "justificativa": "j"},
-        {"corpo": "O modelo aponta sensibilidade de 314159.265 pontos.", "confianca": "media"},
-        {"corpo": "Analise sem numeros novos.", "confianca": "media"},
+        _resposta_do_redator(previsao="O modelo aponta sensibilidade de 314159.265 pontos."),
+        _resposta_do_redator(),
     ]
     llm = LLMFake(respostas)
 
@@ -242,8 +250,8 @@ def test_trava_falha_esgota_tentativas_e_propaga(ambiente, monkeypatch):
     respostas = [
         {"inicio": "2018-01-01", "fim": "2019-12-01", "justificativa": "j"},
         {"familia": "msgarch", "justificativa": "j"},
-        {"corpo": "Numero inventado: 314159.265.", "confianca": "media"},
-        {"corpo": "Outro numero inventado: 271828.182.", "confianca": "media"},
+        _resposta_do_redator(previsao="Numero inventado: 314159.265."),
+        _resposta_do_redator(previsao="Outro numero inventado: 271828.182."),
     ]
     llm = LLMFake(respostas)
 

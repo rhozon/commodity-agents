@@ -78,6 +78,29 @@ class ModelFit:
 
 
 @dataclass
+class CorpoRelatorio:
+    """As tres camadas que o Redator escreve, uma em cada campo.
+
+    O relatorio se anuncia "em tres camadas" desde o spec: previsao, drivers
+    e implicacao de decisao. Enquanto o esquema do Redator tinha um campo so
+    (`corpo`), duas das tres secoes do markdown eram carimbos fixos
+    apontando de volta para a primeira -- havia tres titulos e uma camada. O
+    Redator ja escrevia tres paragrafos; o esquema e que nao os separava.
+
+    A trava anti-alucinacao roda sobre `texto_completo()`, isto e, sobre as
+    tres camadas juntas: cada uma delas e texto de LLM e nenhuma escapa da
+    conferencia por estar em outro campo.
+    """
+    previsao: str
+    drivers: str
+    implicacao: str
+
+    def texto_completo(self) -> str:
+        """As tres camadas concatenadas -- o que a trava precisa varrer."""
+        return "\n\n".join([self.previsao, self.drivers, self.implicacao])
+
+
+@dataclass
 class Diagnosis:
     aprovado: bool
     motivos: list[str] = field(default_factory=list)

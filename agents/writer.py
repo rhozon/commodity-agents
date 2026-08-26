@@ -11,22 +11,30 @@ semantico, nao proveniencia de digito -- que o prompt precisa fechar antes
 de o texto chegar na trava: por isso os numeros vao para o LLM COM ROTULO
 (`RunResult.valores_rotulados()`), nao como uma lista crua de floats.
 
-O agente chama `guard.verificar_numeros` e deixa `NumeroInventado` /
-`NumeroAmbiguo` subirem sem capturar: quem decide o que fazer com a falha
-(nova tentativa, aborto, etc.) e o orquestrador, nao este agente.
+O esquema tem UM CAMPO POR CAMADA (previsao, drivers, implicacao). Com um
+campo unico, o relatorio tinha tres titulos e uma camada so: as secoes
+"Drivers" e "Implicacao de decisao" eram carimbos fixos apontando de volta
+para a primeira. O LLM ja escrevia os tres paragrafos; separa-los no esquema
+e o que faz cada um chegar na sua secao.
+
+A trava roda sobre `CorpoRelatorio.texto_completo()`: as tres camadas
+juntas, porque as tres sao texto de LLM. O agente chama
+`guard.verificar_numeros` e deixa `NumeroInventado` / `NumeroAmbiguo`
+subirem sem capturar: quem decide o que fazer com a falha (nova tentativa,
+aborto, etc.) e o orquestrador, nao este agente.
 """
 from agents.llm import LLM
 from agro import guard
-from agro.types import RunResult
+from agro.types import CorpoRelatorio, RunResult
 
-ESQUEMA = {"corpo": str, "confianca": str}
+ESQUEMA = {"previsao": str, "drivers": str, "implicacao": str, "confianca": str}
 
 
 class Redator:
     def __init__(self, llm: LLM):
         self._llm = llm
 
-    def escrever(self, res: RunResult) -> str:
+    def escrever(self, res: RunResult) -> CorpoRelatorio:
         rotulados = res.valores_rotulados()
         lista_numeros = "\n".join(f"  - {rotulo} = {valor:g}" for rotulo, valor in rotulados)
         prompt = (
@@ -39,9 +47,15 @@ class Redator:
             "nao troque o rotulo nem atribua um numero a uma grandeza diferente "
             "da que ele rotula):\n"
             f"{lista_numeros}\n\n"
-            "Escreva o corpo do relatorio em portugues, em tres paragrafos: "
-            "previsao, drivers e implicacao de decisao.\n\n"
-            "REGRAS ABSOLUTAS:\n"
+            "Escreva o corpo do relatorio em portugues, em TRES CAMPOS "
+            "SEPARADOS, um paragrafo cada:\n"
+            "- previsao: o que o modelo ajustado diz sobre o preco, com o "
+            "alcance e os limites do que ele consegue afirmar.\n"
+            "- drivers: o que move a serie -- quais series entraram, o que o "
+            "diagnostico e a volatilidade estimada indicam.\n"
+            "- implicacao: o que isso significa para uma decisao, lembrando "
+            "que o sistema informa e quem decide e humano.\n\n"
+            "REGRAS ABSOLUTAS (valem para os tres campos):\n"
             "1. Use SOMENTE numeros da lista acima, e somente com o rotulo "
             "correspondente -- nunca cite um numero como se fosse outra grandeza.\n"
             "2. Nunca invente valor, percentual ou projecao numerica que nao "
@@ -55,6 +69,11 @@ class Redator:
             "zero por construcao), e citar uma projecao que nao existe e "
             "alucinacao."
         )
-        corpo = self._llm.perguntar(prompt, ESQUEMA)["corpo"]
-        guard.verificar_numeros(corpo, res)     # levanta NumeroInventado/NumeroAmbiguo
+        resposta = self._llm.perguntar(prompt, ESQUEMA)
+        corpo = CorpoRelatorio(previsao=resposta["previsao"],
+                               drivers=resposta["drivers"],
+                               implicacao=resposta["implicacao"])
+        # Levanta NumeroInventado/NumeroAmbiguo. Roda sobre as tres camadas
+        # juntas: nenhuma escapa da trava por estar em outro campo.
+        guard.verificar_numeros(corpo.texto_completo(), res)
         return corpo
