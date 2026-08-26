@@ -68,6 +68,26 @@ def _num(valor) -> float | None:
     return f if np.isfinite(f) else None
 
 
+# jsonlite nao tem literal JSON para NaN/Inf: serializa os dois como as
+# STRINGS "NaN", "Inf" e "-Inf". Sem reconhece-las, um ajuste degenerado
+# chega aqui parecendo "valor nao numerico" e some em silencio -- que e
+# exatamente o oposto do que se quer, porque ajuste degenerado tem de
+# REPROVAR com motivo escrito.
+_NAO_FINITOS_DO_R = frozenset({"nan", "inf", "+inf", "-inf", "infinity",
+                               "-infinity", "+infinity"})
+
+
+def _e_nao_finito(valor) -> bool:
+    """`valor` e um numero que nao e finito (NaN/Inf), inclusive na forma de
+    string que o jsonlite usa? Distingue ajuste DEGENERADO de campo que o R
+    simplesmente nao mandou ou mandou como texto (ex.: `ordem = "auto"`)."""
+    if isinstance(valor, str):
+        return valor.strip().lower() in _NAO_FINITOS_DO_R
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        return False
+    return not np.isfinite(float(valor))
+
+
 def _lista_de_vol(bruto) -> list[float]:
     """Normaliza `vol_por_regime`: o R manda lista no msgarch e pode mandar
     escalar nas demais familias (auto_unbox). Aqui vira sempre lista."""
@@ -89,9 +109,27 @@ def fit_model(serie: pd.Series, familia: str) -> ModelFit:
         return ModelFit(familia, False, {}, None, None,
                         saida.get("mensagem", "nao convergiu"))
 
-    pars = {k: float(v) for k, v in (saida.get("parametros") or {}).items()
-            if isinstance(v, (int, float))}
-    return ModelFit(familia, True, pars, saida.get("log_lik"), saida.get("aic"),
+    # Parametro nao finito (NaN/Inf) NAO e parametro ausente: e a assinatura
+    # de um ajuste degenerado, e sai daqui nomeado em `parametros_nao_finitos`
+    # para `diagnose` reprovar por escrito. Antes ele era descartado junto com
+    # os valores nao numericos, e o ajuste degenerado escapava porque
+    # `if fit.convergiu and fit.parametros:` nem chegava a rodar.
+    pars: dict[str, float] = {}
+    pars_nao_finitos: list[str] = []
+    for chave, bruto in (saida.get("parametros") or {}).items():
+        convertido = _num(bruto)
+        if convertido is not None:
+            pars[chave] = convertido
+        elif _e_nao_finito(bruto):
+            pars_nao_finitos.append(chave)
+
+    # `aic` e `log_lik` passam por `_num` AQUI, na fronteira com o R, e nao
+    # la adiante num `np.isfinite`: o jsonlite manda "NaN"/"Inf" como string,
+    # e `np.isfinite("NaN")` levanta TypeError -- justamente no ramo cujo
+    # trabalho e reprovar o ajuste degenerado.
+    return ModelFit(familia, True, pars,
+                    _num(saida.get("log_lik")), _num(saida.get("aic")),
+                    parametros_nao_finitos=pars_nao_finitos,
                     vol_por_regime=_lista_de_vol(saida.get("vol_por_regime")),
                     vol_atual=_num(saida.get("vol_atual")),
                     ljung_box_pvalor=_num(saida.get("ljung_box_pvalor")),
@@ -111,10 +149,24 @@ def diagnose(fit: ModelFit, serie: pd.Series) -> Diagnosis:
     if len(ret) < MIN_OBS:
         motivos.append(f"serie curta demais: {len(ret)} retornos, minimo {MIN_OBS}")
 
-    if fit.convergiu and fit.aic is not None:
-        testes["aic"] = float(fit.aic)
-        if not np.isfinite(fit.aic):
-            motivos.append("AIC nao finito, sinal de ajuste degenerado")
+    if fit.convergiu:
+        # Le o valor CONVERTIDO. `fit.aic` pode chegar aqui como o `float`
+        # normal de um ajuste bom, como `None` (o R nao devolveu, ou devolveu
+        # NaN/Inf e `fit_model` ja converteu) ou -- quando alguem constroi o
+        # `ModelFit` na mao -- como um float nao finito. `_num` cobre os tres.
+        aic = _num(fit.aic)
+        if aic is not None:
+            testes["aic"] = aic
+        else:
+            motivos.append("AIC ausente ou nao finito (NaN/Inf), "
+                           "sinal de ajuste degenerado")
+
+    if fit.convergiu and fit.parametros_nao_finitos:
+        motivos.append(
+            "parametro(s) nao finito(s) no ajuste: "
+            f"{', '.join(fit.parametros_nao_finitos)} -- NaN ou infinito e "
+            "ajuste degenerado, nao parametro ausente"
+        )
 
     if fit.convergiu and fit.parametros:
         maior = max(abs(v) for v in fit.parametros.values())

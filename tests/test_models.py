@@ -175,6 +175,57 @@ def test_diagnose_reprova_ajuste_com_autocorrelacao_residual_forte():
     assert any("ljung-box" in m.lower() and "autocorrela" in m.lower() for m in d.motivos)
 
 
+def test_serie_degenerada_reprova_com_motivo_e_nao_levanta():
+    """Serie constante (item explicito de verificacao do spec): o R converge
+    o auto.arima e devolve `aic = "-Inf"`, `log_lik = "Inf"` e
+    `ljung_box_pvalor = "NaN"` -- strings, porque jsonlite nao tem literal
+    JSON para NaN/Inf. Antes desta correcao, `np.isfinite("-Inf")` levantava
+    TypeError exatamente no ramo cujo trabalho e REPROVAR o ajuste."""
+    n = 300
+    idx = pd.date_range("2020-01-01", periods=n, freq="B")
+    constante = pd.Series([100.0] * n, index=idx)
+
+    fit = models.fit_model(constante, "arima")
+    d = models.diagnose(fit, constante)
+
+    assert d.aprovado is False
+    assert d.motivos and all(isinstance(m, str) and m.strip() for m in d.motivos)
+    assert any("aic" in m.lower() for m in d.motivos), d.motivos
+
+
+def test_fit_model_nomeia_parametro_nao_finito_em_vez_de_descartar(monkeypatch, serie):
+    """Parametro NaN/Inf nao pode sumir junto com os nao numericos: se
+    sumisse, `parametros` ficaria vazio, o teste de magnitude nem rodaria e o
+    ajuste degenerado escapava por um segundo caminho."""
+    monkeypatch.setattr(models.rbridge, "chamar_r", lambda *a, **k: {
+        "convergiu": True, "familia": "garch",
+        "parametros": {"omega": "NaN", "alpha1": 0.2, "beta1": "Inf"},
+        "log_lik": 100.0, "aic": -200.0,
+        "ljung_box_pvalor": 0.6, "arch_lm_pvalor": 0.7})
+    fit = models.fit_model(serie, "garch")
+    assert fit.parametros == {"alpha1": 0.2}
+    assert set(fit.parametros_nao_finitos) == {"omega", "beta1"}
+
+    d = models.diagnose(fit, serie)
+    assert d.aprovado is False
+    assert any("nao finito" in m for m in d.motivos), d.motivos
+
+
+def test_aic_nao_finito_do_r_vira_none_e_reprova(monkeypatch, serie):
+    """`"-Inf"` (o que o jsonlite manda) nao chega cru ate o `if`: `_num` o
+    converte na fronteira, e o motivo de reprovacao sai escrito."""
+    monkeypatch.setattr(models.rbridge, "chamar_r", lambda *a, **k: {
+        "convergiu": True, "familia": "arima", "parametros": {"intercept": 0.0},
+        "log_lik": "Inf", "aic": "-Inf",
+        "ljung_box_pvalor": 0.6, "arch_lm_pvalor": 0.7})
+    fit = models.fit_model(serie, "arima")
+    assert fit.aic is None and fit.log_lik is None
+
+    d = models.diagnose(fit, serie)
+    assert d.aprovado is False
+    assert any("AIC" in m for m in d.motivos), d.motivos
+
+
 # --- backtest ------------------------------------------------------------
 
 
