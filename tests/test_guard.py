@@ -165,12 +165,17 @@ def test_ano_precedido_de_moeda_nao_e_isento(parquet):
 
 def test_inteiro_pequeno_precedido_de_moeda_nao_e_isento(parquet):
     """Simbolo de moeda MARCA o numero como grandeza, do mesmo jeito que o
-    '%': 'R$ 2' e preco, nao a contagem '2 regimes'. Sem este teste, o teste
+    '%': 'R$ 7' e preco, nao a contagem '7 regimes'. Sem este teste, o teste
     do simbolo de moeda ficaria sem nada que o prendesse -- a exigencia de
-    preposicao de data ja rejeita 'R$ 2000' por outro caminho."""
+    preposicao de data ja rejeita 'R$ 2000' por outro caminho.
+
+    O inteiro escolhido nao pode cair na faixa de +-0.5 de nenhum valor
+    autorizado, senao o teste mede a tolerancia e nao a marcacao. "2" servia
+    ate `Z_IC_95 = 1.96` entrar em `valores_rotulados()`; "7" esta longe de
+    todos os valores de `_fabricar`."""
     res = _fabricar(parquet)
     with pytest.raises(guard.NumeroInventado):
-        guard.verificar_numeros("O contrato fechou a R$ 2.", res)
+        guard.verificar_numeros("O contrato fechou a R$ 7.", res)
 
 
 def test_inteiro_na_faixa_de_ano_sem_contexto_de_data_nao_e_isento(parquet):
@@ -332,11 +337,16 @@ def test_mascara_de_ordem_nao_aceita_nome_arbitrario(parquet):
 
 
 def test_inteiro_pequeno_seguido_de_percentual_derruba(parquet):
-    """O inverso exato do teste aplicado a 0, 50 e 100: 'subiu 2%' e uma
-    afirmacao quantitativa e precisa vir do nucleo."""
+    """O inverso exato do teste aplicado a 0, 50 e 100: 'subiu 7%' e uma
+    afirmacao quantitativa e precisa vir do nucleo.
+
+    Nao serve qualquer inteiro: ele precisa estar fora da faixa de +-0.5 de
+    todo valor autorizado (ver a limitacao "inteiros curtos sao
+    estruturalmente livres" em `agro.guard`), senao o que passaria seria a
+    tolerancia, nao a isencao de prosa."""
     res = _fabricar(parquet)
     with pytest.raises(guard.NumeroInventado):
-        guard.verificar_numeros("O preco subiu 2% no mes.", res)
+        guard.verificar_numeros("O preco subiu 7% no mes.", res)
 
 
 def test_percentual_retorico_sem_o_simbolo_derruba(parquet):
