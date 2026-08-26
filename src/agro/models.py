@@ -196,10 +196,20 @@ def backtest(serie: pd.Series, familia: str, horizonte: int = 20) -> Backtest:
         "familia": familia, "retornos": ret_treino.tolist(), "horizonte": horizonte})
     previsao = saida.get("previsao")
     notas: list[str] = []
+
+    # Ramo do ponto previsto: verifica se convergiu E se tem previsao valida
     if saida.get("convergiu") and previsao is not None and len(previsao) > 0:
         ret_prev = np.asarray(previsao, dtype=float)
+        # Verifica se a previsao e zeros por construcao (modelos de volatilidade)
+        if np.allclose(ret_prev, 0.0):
+            notas.append("o modelo previu zero por construcao (media zero na "
+                        "especificacao) e empatou com o passeio aleatorio no ponto")
         prev = treino[-1] * np.exp(np.cumsum(ret_prev))
     else:
+        # Refit do backtest nao convergiu ou nao devolveu previsao
+        if not saida.get("convergiu"):
+            notas.append("o refit do backtest nao convergiu e a previsao pontual "
+                        "caiu na referencia")
         prev = base                       # sem previsao do modelo, empata com a referencia
     mape_mod, rmse_mod = _metricas(teste, prev)
 
