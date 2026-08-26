@@ -80,6 +80,35 @@ def _formatar_volatilidade(fit: ModelFit) -> list[str]:
     return linhas
 
 
+def _formatar_recuo_de_modelo(res: RunResult) -> list[str]:
+    """Uma linha por tentativa reprovada, com a familia e o motivo escrito.
+
+    "Tentativas: 2" sozinho nao diz nada: nao nomeia a familia que caiu nem
+    por que ela caiu. Quando o MSGARCH e reprovado e o sistema recua para o
+    GARCH, e AQUI que o recuo fica declarado -- e ele fica declarado sempre
+    que houve reprovacao, nao apenas quando o teto estourou.
+    """
+    if not res.historico_reprovacoes:
+        return []
+
+    linhas = [
+        "## Recuo de modelo",
+        "",
+        "O Critico reprovou as tentativas abaixo antes do ajuste que o "
+        "relatorio descreve. Cada linha traz a familia tentada e o motivo "
+        "escrito da reprovacao.",
+        "",
+    ]
+    for i, entrada in enumerate(res.historico_reprovacoes, start=1):
+        familia, separador, motivos = entrada.partition(": ")
+        if separador and motivos:
+            linhas.append(f"{i}. **{familia}** — {motivos}")
+        else:
+            linhas.append(f"{i}. {entrada}")
+    linhas.append("")
+    return linhas
+
+
 def _formatar_testes_residuo(res: RunResult) -> list[str]:
     """Ljung-Box e ARCH-LM sao a prova de que as premissas do ajuste foram
     checadas -- aparecem quando o Critico (via `diagnose`) os carregou em
@@ -141,6 +170,7 @@ def render_report(res: RunResult, corpo_md: str) -> str:
         f"Modelo: {res.fit.familia}. Tentativas: {res.tentativas}.",
         "",
     ]
+    linhas += _formatar_recuo_de_modelo(res)
     if res.teto_estourado:
         linhas += ["> **Aviso:** o teto de tentativas foi atingido sem ajuste aprovado. "
                    "O que segue e o ultimo ajuste tentado, sem comparacao de AIC ou "

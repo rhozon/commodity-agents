@@ -91,6 +91,44 @@ def test_reprovacao_faz_recuar_de_modelo(ambiente, monkeypatch):
     assert res.teto_estourado is False
 
 
+def test_recuo_de_modelo_aparece_no_resultado_e_no_relatorio(ambiente, monkeypatch):
+    """O spec exige que o relatorio REGISTRE o recuo, nao so o numero de
+    tentativas. Sem isto, um MSGARCH reprovado -- o modelo-assinatura do
+    projeto -- sumia do texto final: quem lia nao sabia nem que ele foi
+    tentado nem por que caiu."""
+    def fit(serie, familia):
+        if familia == "msgarch":
+            return ModelFit(familia, False, {}, None, None, "nao convergiu")
+        return _fit_aprovado(familia)
+    monkeypatch.setattr(orchestrator.models, "fit_model", fit)
+    monkeypatch.setattr(orchestrator.models, "backtest", lambda s, f: _backtest_falso())
+
+    res = orchestrator.rodar("p", "milho", _llm(["msgarch", "garch"]))
+
+    assert len(res.historico_reprovacoes) == 1
+    reprovacao = res.historico_reprovacoes[0]
+    assert reprovacao.startswith("msgarch:")
+    assert "nao convergiu" in reprovacao
+
+    md = res.relatorio_md
+    assert "## Recuo de modelo" in md
+    assert "msgarch" in md
+    linha = next(l for l in md.splitlines() if l.startswith("1."))
+    assert "msgarch" in linha and "nao convergiu" in linha
+
+
+def test_sem_reprovacao_nao_ha_secao_de_recuo(ambiente, monkeypatch):
+    """Aprovado de primeira: nao ha recuo para declarar, e o relatorio nao
+    inventa uma secao vazia."""
+    monkeypatch.setattr(orchestrator.models, "fit_model", lambda s, f: _fit_aprovado(f))
+    monkeypatch.setattr(orchestrator.models, "backtest", lambda s, f: _backtest_falso())
+
+    res = orchestrator.rodar("p", "milho", _llm(["msgarch"]))
+
+    assert res.historico_reprovacoes == []
+    assert "## Recuo de modelo" not in res.relatorio_md
+
+
 def test_teto_estourado_marca_e_nao_levanta(ambiente, monkeypatch):
     monkeypatch.setattr(orchestrator.models, "fit_model",
                         lambda s, f: ModelFit(f, False, {}, None, None, "nao convergiu"))
