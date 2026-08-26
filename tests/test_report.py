@@ -248,6 +248,17 @@ def test_render_report_mostra_pvalores_de_residuo(resultado):
     assert "0.27" in md or "0,27" in md  # arch_lm_pvalor
 
 
+def test_cobertura_sai_com_nivel_nominal_n_e_resolucao(bundle, fit_arima, diagnosis):
+    """Cobertura sem referencia nao diz nada: "1.00" pode ser calibracao
+    perfeita ou banda larga demais. Com o nivel nominal, o n e a resolucao
+    (1/n, o menor passo que a medida consegue dar), 1.00 sobre 20 pontos num
+    intervalo de 95% se le como o achado de ma calibracao que e."""
+    b = Backtest(20, 4.5, 3.2, 1.0, 5.1, 3.8, nota="")
+    res = _resultado(bundle, fit_arima, diagnosis, b)
+    md = report.render_report(res, _corpo())
+    assert "Cobertura do intervalo de 95%: 1.00 (20 pontos, resolucao 0.05)" in md
+
+
 def test_render_report_funciona_sem_backtest(bundle, fit_arima, diagnosis):
     res = _resultado(bundle, fit_arima, diagnosis, None)
     md = report.render_report(res, _corpo())
