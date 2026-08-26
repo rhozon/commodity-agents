@@ -11,6 +11,10 @@ sozinhos -- decidem qual funcao do nucleo chamar e quando recuar de modelo.
 sistema (`run.py --fake-llm`, cache congelado, sem chamada de API), com o
 modelo que passou (ou nao) no crivo do Critico e o backtest que ilustra a
 leitura -- **uma** janela de origem fixa com 20 pontos, sem rolling origin.
+Sem chave de API o corpo analitico desses dois relatorios e texto fixo de
+demonstracao, escrito a mao para nao citar digito nenhum; o que o sistema
+de fato calculou esta nas secoes deterministicas (recuo de modelo,
+volatilidade, testes de residuo e backtest).
 
 ## Como funciona
 
@@ -92,7 +96,8 @@ publicados; fica registrado, nao implementado (ver a docstring de
 
 ## A trava anti-alucinacao (e suas limitacoes)
 
-O corpo do relatorio (secao "Previsao") e escrito por um LLM; tudo o mais no
+As tres camadas do corpo ("Previsao", "Drivers" e "Implicacao de decisao")
+sao escritas por um LLM, uma por campo do esquema do Redator; tudo o mais no
 pipeline e deterministico. `agro.guard.verificar_numeros` varre todo numero
 do texto do Redator e confere cada um contra os valores calculados pelo
 nucleo (`RunResult.valores_rotulados()`); numero sem origem levanta
@@ -133,8 +138,11 @@ alucinacoes reais. Ela nao fecha o digito real com significado trocado.
 
 ## Rodar
 
-Requer Python 3.14+, R 4.4+ com `MSGARCH`, `rugarch`, `forecast` e
-`jsonlite`.
+Requer Python 3.10+ e R 4.4+ com `MSGARCH`, `rugarch`, `forecast` e
+`jsonlite`. O piso do Python e 3.10 porque o codigo usa `X | None` em
+anotacao avaliada em tempo de execucao (PEP 604, em `dataclass` e em
+assinatura de funcao) e genericos embutidos (`dict[str, float]`); nada aqui
+depende de versao mais nova.
 
 ```bash
 pip install -r requirements.txt
@@ -147,17 +155,23 @@ set ANTHROPIC_API_KEY=...
 python run.py --commodity soja --pergunta "o que move o preco nos proximos 3 meses?"
 ```
 
-Se o `Rscript.exe` nao estiver no PATH (comum no Windows -- ele nao entra no
-PATH por padrao mesmo com o R instalado), a variavel `AGRO_RSCRIPT` resolve:
+`agro.config.rscript_path()` procura o Rscript em tres lugares, nesta ordem:
+
+1. a variavel de ambiente `AGRO_RSCRIPT`, se definida -- ela e autoritativa:
+   apontando para um caminho que nao existe, o erro sobe em vez de cair
+   calado nos proximos passos;
+2. `Rscript` ou `Rscript.exe` no PATH (`shutil.which`) -- o caso normal de
+   Linux e macOS, e de Windows quando o instalador do R registrou o PATH;
+3. o caminho padrao de instalacao no Windows
+   (`C:\Program Files\R\R-4.4.1\bin\Rscript.exe`).
+
+Nao achando em nenhum dos tres, levanta `FileNotFoundError` citando os tres.
+No Windows o instalador do R nao registra o PATH por padrao, e a variavel
+resolve:
 
 ```bash
 set AGRO_RSCRIPT=C:\Program Files\R\R-4.4.1\bin\Rscript.exe
 ```
-
-Sem a variavel, `agro.config.rscript_path()` tenta um caminho padrao fixo
-(`C:\Program Files\R\R-4.4.1\bin\Rscript.exe`) e levanta `FileNotFoundError`
-com essa mesma instrucao se nao achar o executavel em nenhum dos dois
-lugares.
 
 ## O cache congelado
 
@@ -181,6 +195,17 @@ aparece no relatorio como um aviso ("Fonte trocada: CEPEA indisponivel
 
 ```bash
 python -m pytest -v
+```
+
+**A suite precisa do R instalado, com os mesmos pacotes que o projeto usa em
+producao.** Nao ha `skipif`: varios testes (`tests/test_rbridge.py`, parte de
+`tests/test_models.py` e `tests/test_smoke.py`) chamam o R de verdade por
+subprocess, porque e a fronteira Python-R que eles existem para provar. Sem o
+R, ou sem os pacotes, a suite cai inteira -- e a causa nao aparece sozinha.
+Para instalar os pacotes que `r/fit_model.R` carrega:
+
+```r
+install.packages(c("jsonlite", "MSGARCH", "rugarch", "forecast"))
 ```
 
 Nenhum teste toca a rede ou gasta credito de API: o cache em `cache/` e
