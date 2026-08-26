@@ -53,3 +53,20 @@ def test_redator_falha_se_inventar_numero(tmp_path):
     llm = LLMFake([{"corpo": "O preco sobe 37.9% ate dezembro.", "confianca": "media"}])
     with pytest.raises(guard.NumeroInventado):
         Redator(llm).escrever(res)
+
+
+def test_econometrista_forca_escada_com_maiuscula():
+    """Achado 1: reprovação em maiúsculas (comum em erros de R) deve forçar escada."""
+    llm = LLMFake([{"familia": "msgarch", "justificativa": "insisto"}])
+    # Simular mensagem de erro do R com MSGARCH em maiúsculas
+    fam = Econometrista(llm).escolher("p", tentativa=2, reprovacoes=["MSGARCH nao convergiu"])
+    assert fam == "garch", "Reprovação em maiúsculas deve forçar o próximo degrau"
+
+
+def test_econometrista_detecta_violacao_contrato_reprovacoes():
+    """Achado 2: se reprovações não contém nome de família, contrato foi violado."""
+    llm = LLMFake([{"familia": "garch", "justificativa": "recuo"}])
+    # Motivo sem nenhum nome de família conhecido — viola o contrato
+    with pytest.raises(ValueError, match="contrato"):
+        Econometrista(llm).escolher("p", tentativa=2,
+                                   reprovacoes=["ajuste ruim mas sem mencionar familia"])
