@@ -3,6 +3,7 @@
 O cache e a espinha dorsal da reprodutibilidade: uma vez baixado e commitado,
 o grafico publicado nao muda quando o mercado mexe, e os testes rodam sem rede.
 """
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -13,6 +14,37 @@ from agro.types import SeriesBundle
 
 def _caminho_cache(commodity: str, inicio: str, fim: str) -> Path:
     return config.CACHE_DIR / f"{commodity}_{inicio}_{fim}.parquet"
+
+
+def _caminho_meta(parquet_path: Path) -> Path:
+    """Calcula o caminho do arquivo _meta.json irmao ao parquet."""
+    return parquet_path.parent / (parquet_path.stem + "_meta.json")
+
+
+def _gravar_meta(parquet_path: Path, fontes: dict, trocas: list) -> None:
+    """Grava a proveniencia (fontes e trocas) em arquivo JSON irmao ao parquet."""
+    meta = {
+        "fontes_usadas": fontes,
+        "trocas_de_fonte": trocas
+    }
+    meta_path = _caminho_meta(parquet_path)
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+
+
+def _ler_meta(parquet_path: Path) -> tuple[dict, list]:
+    """Le a proveniencia do arquivo JSON irmao ao parquet.
+
+    Se o arquivo nao existir (cache antigo), retorna aviso sobre desconhecimento.
+    """
+    meta_path = _caminho_meta(parquet_path)
+    if meta_path.exists():
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        return meta.get("fontes_usadas", {}), meta.get("trocas_de_fonte", [])
+    else:
+        # Parquet antigo sem meta: registra que a proveniencia e desconhecida
+        return {}, ["Proveniencia deste cache e desconhecida (arquivo de metadados nao encontrado)"]
 
 
 def _baixar_yahoo(ticker: str, inicio: str, fim: str) -> pd.Series:
@@ -66,11 +98,13 @@ def fetch_series(commodity: str, inicio: str, fim: str, usar_cache: bool = True)
     caminho = _caminho_cache(commodity, inicio, fim)
     if usar_cache and caminho.exists():
         df = pd.read_parquet(caminho)
+        fontes, trocas = _ler_meta(caminho)
         return SeriesBundle(commodity, inicio, fim, list(df.columns), len(df),
-                            str(caminho), {"cache": str(caminho)}, [])
+                            str(caminho), fontes, trocas)
 
     df, fontes, trocas = _baixar(commodity, inicio, fim)
     caminho.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(caminho)
+    _gravar_meta(caminho, fontes, trocas)
     return SeriesBundle(commodity, inicio, fim, list(df.columns), len(df),
                         str(caminho), fontes, trocas)
