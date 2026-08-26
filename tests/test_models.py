@@ -193,6 +193,8 @@ def test_backtest_sem_previsao_do_modelo_empata_com_baseline(monkeypatch, serie)
     bt = models.backtest(serie, "arima", horizonte=10)
     assert bt.mape == bt.mape_baseline
     assert bt.rmse == bt.rmse_baseline
+    # Apos a correcao, essa situacao deve registrar uma nota sobre a nao-convergencia
+    assert "nao convergiu" in bt.nota.lower() or "não convergiu" in bt.nota.lower()
 
 
 def test_backtest_modelo_volatilidade_com_previsao_zero_empata_com_baseline(monkeypatch, serie):
@@ -304,3 +306,59 @@ def test_backtest_vol_atual_invalida_cai_no_desvio_historico(monkeypatch, serie)
                         _saida_volatilidade(float("nan")))
     bt = models.backtest(serie, "msgarch", horizonte=10)
     assert "historico" in bt.nota.lower()
+
+
+# --- Correção 3: notas de Backtest para distinguir empate por construção ---
+# --- de refit que não convergiu ---
+
+
+def test_backtest_refit_nao_convergiu_registra_nota_do_ponto(monkeypatch, serie):
+    """Quando o refit truncado não converge, a previsão cai na referência.
+    Deve haver nota explícita sobre isso, não só silêncio."""
+    monkeypatch.setattr(models.rbridge, "chamar_r",
+                        lambda *a, **k: {"convergiu": False, "familia": "arima"})
+    bt = models.backtest(serie, "arima", horizonte=10)
+    assert bt.mape == bt.mape_baseline
+    assert bt.rmse == bt.rmse_baseline
+    # A nota deve citar que não convergiu E que usou a referência para o ponto previsto
+    assert "nao convergiu" in bt.nota.lower() or "não convergiu" in bt.nota.lower()
+    assert bt.nota != ""
+
+
+def test_backtest_previsao_de_zeros_por_construcao_registra(monkeypatch, serie):
+    """msgarch/garch convergem, previsão de retorno é zero por especificação
+    (média zero), e o backtest empata com a referência no ponto POR CONSTRUÇÃO.
+    Isso não é um problema -- é o comportamento correto. A nota deve deixar claro
+    que o empate é por construção, não por falha."""
+    monkeypatch.setattr(models.rbridge, "chamar_r", lambda *a, **k: {
+        "convergiu": True, "familia": "msgarch",
+        "parametros": {"alpha0_1": 0.01}, "log_lik": 500.0, "aic": -900.0,
+        "vol_por_regime": [0.01, 0.02], "vol_atual": 0.015,
+        "previsao": [0.0] * 10})
+    bt = models.backtest(serie, "msgarch", horizonte=10)
+    assert bt.mape == bt.mape_baseline
+    # A nota deve citar que é empate por construção
+    assert "construcao" in bt.nota.lower() or "construção" in bt.nota.lower()
+    assert bt.nota != ""
+
+
+def test_backtest_convergiu_com_vol_invalida_e_previsao_zeros_registra_ambas(monkeypatch, serie):
+    """Caso em que AMBOS os problemas ocorrem: vol_atual inválida (banda cai no
+    histórico) E previsão é zeros (ponto cai na referência). As duas notas devem
+    aparecer juntas no campo `nota`."""
+    monkeypatch.setattr(models.rbridge, "chamar_r", lambda *a, **k: {
+        "convergiu": True, "familia": "msgarch",
+        "parametros": {"alpha0_1": 0.01}, "log_lik": 500.0, "aic": -900.0,
+        "vol_por_regime": [0.01, 0.02], "vol_atual": None,  # vol_atual inválida
+        "previsao": [0.0] * 10})  # previsão de zeros
+    bt = models.backtest(serie, "msgarch", horizonte=10)
+    assert bt.mape == bt.mape_baseline
+    # Ambas as notas devem estar presentes
+    nota_lower = bt.nota.lower()
+    assert "construcao" in nota_lower or "construção" in nota_lower, \
+        f"Falta menção a construção: {bt.nota}"
+    assert "historico" in nota_lower, \
+        f"Falta menção ao desvio histórico: {bt.nota}"
+    # E devem ser separadas (viajam juntas como uma lista)
+    assert ";" in bt.nota or len(bt.nota.split()) > 10, \
+        f"Notas devem coexistir ou ser descritivas: {bt.nota}"
