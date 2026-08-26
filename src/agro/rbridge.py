@@ -16,11 +16,17 @@ def chamar_r(script: str, payload: dict, timeout: int = 300) -> dict:
     if not caminho.exists():
         raise FileNotFoundError(f"script R nao encontrado: {caminho}")
 
-    proc = subprocess.run(
-        [config.rscript_path(), "--vanilla", str(caminho)],
-        input=json.dumps(payload),
-        capture_output=True, text=True, timeout=timeout, encoding="utf-8",
-    )
+    try:
+        proc = subprocess.run(
+            [config.rscript_path(), "--vanilla", str(caminho)],
+            input=json.dumps(payload),
+            capture_output=True, text=True, timeout=timeout,
+            encoding="utf-8", errors="replace",
+        )
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(
+            f"R estourou o tempo limite rodando {script} (apos {timeout}s)"
+        ) from e
     if proc.returncode != 0:
         raise RuntimeError(f"R falhou ({proc.returncode}): {proc.stderr.strip()}")
 
