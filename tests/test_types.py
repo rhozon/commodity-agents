@@ -236,3 +236,39 @@ class TestBacktestBateuBaseline:
             rmse_baseline=12.0,
         )
         assert b2.bateu_baseline is True
+
+
+class TestValoresPermitidosVolatilidade:
+    """Correcao 1: a trava anti-alucinacao so deixa citar numero presente em
+    valores_permitidos(). Sem a volatilidade ali, ela PROIBIA o Redator de
+    mencionar volatilidade -- justamente o que o modelo tem a dizer."""
+
+    def test_inclui_vol_por_regime_e_vol_atual(self, bundle, diagnosis, backtest):
+        fit = ModelFit(
+            familia="msgarch",
+            convergiu=True,
+            parametros={"alpha0_1": 0.01},
+            log_lik=-1234.5,
+            aic=2475.0,
+            vol_por_regime=[0.0071, 0.0342],
+            vol_atual=0.0189,
+        )
+        result = RunResult(
+            commodity="milho", pergunta="?", bundle=bundle, fit=fit,
+            diagnosis=diagnosis, backtest=backtest, tentativas=1,
+            teto_estourado=False,
+        )
+        permitidos = result.valores_permitidos()
+        assert 0.0071 in permitidos
+        assert 0.0342 in permitidos
+        assert 0.0189 in permitidos
+
+    def test_vol_atual_none_nao_entra(self, bundle, diagnosis, backtest, fit):
+        result = RunResult(
+            commodity="milho", pergunta="?", bundle=bundle, fit=fit,
+            diagnosis=diagnosis, backtest=backtest, tentativas=1,
+            teto_estourado=False,
+        )
+        permitidos = result.valores_permitidos()
+        assert None not in permitidos
+        assert all(isinstance(v, float) for v in permitidos)
