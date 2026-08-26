@@ -1,0 +1,9 @@
+{
+  "fontes_usadas": {
+    "cbot": "Yahoo Finance (ZC=F)",
+    "usdbrl": "Yahoo Finance (BRL=X)"
+  },
+  "trocas_de_fonte": [
+    "CEPEA indisponivel (coleta CEPEA nao implementada nesta versao); relatorio segue so com a serie internacional"
+  ]
+}
