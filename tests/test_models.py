@@ -2,7 +2,10 @@
 
 Os testes usam monkeypatch em models.rbridge.chamar_r para nao chamar o R de
 verdade, exceto os de backtest com convergencia, que chamam o R via
-rbridge (arima e rapido o bastante para rodar em teste).
+rbridge (arima e rapido o bastante para rodar em teste), e o de reprovacao
+por autocorrelacao residual, que chama o R via rbridge com familia garch
+(tambem rapido o bastante, ~2s) porque a violacao so e inequivoca com um
+ajuste de verdade -- ver comentario no proprio teste.
 """
 import numpy as np
 import pandas as pd
@@ -92,11 +95,84 @@ def test_diagnose_reprova_parametro_explodiu(serie):
 
 
 def test_diagnose_aprova_fit_valido(serie):
-    fit = ModelFit("arima", True, {"ar1": 0.3}, 900.0, -1800.0)
+    # Antes desta correcao este ModelFit (sem p-valores de residuo) bastava
+    # para aprovar: era exatamente o buraco que este fix fecha -- "aprovado"
+    # sem nenhum teste de residuo ter rodado. Agora aprovar exige tambem
+    # ljung_box_pvalor/arch_lm_pvalor presentes e acima do limiar; um
+    # ModelFit sem eles cai no motivo de ausencia de informacao (ver teste
+    # test_diagnose_reprova_por_ausencia_de_testes_de_residuo), entao este
+    # fixture passa a fornece-los para continuar sendo o caso "aprova de
+    # verdade".
+    fit = ModelFit("arima", True, {"ar1": 0.3}, 900.0, -1800.0,
+                    ljung_box_pvalor=0.6, arch_lm_pvalor=0.7)
     d = models.diagnose(fit, serie)
     assert d.aprovado is True
     assert d.motivos == []
     assert d.testes["n_retornos"] == float(len(serie) - 1)
+
+
+def test_diagnose_registra_pvalores_dos_testes_de_residuo(serie):
+    fit = ModelFit("arima", True, {"ar1": 0.3}, 900.0, -1800.0,
+                    ljung_box_pvalor=0.6123, arch_lm_pvalor=0.789)
+    d = models.diagnose(fit, serie)
+    assert d.testes["ljung_box_pvalor"] == 0.6123
+    assert d.testes["arch_lm_pvalor"] == 0.789
+
+
+def test_diagnose_reprova_ljung_box_abaixo_do_limiar(serie):
+    fit = ModelFit("arima", True, {"ar1": 0.3}, 900.0, -1800.0,
+                    ljung_box_pvalor=0.001, arch_lm_pvalor=0.7)
+    d = models.diagnose(fit, serie)
+    assert d.aprovado is False
+    assert any("ljung-box" in m.lower() and "autocorrela" in m.lower() for m in d.motivos)
+
+
+def test_diagnose_reprova_arch_lm_abaixo_do_limiar(serie):
+    fit = ModelFit("garch", True, {"omega": 1e-6}, 900.0, -1800.0,
+                    ljung_box_pvalor=0.7, arch_lm_pvalor=0.001)
+    d = models.diagnose(fit, serie)
+    assert d.aprovado is False
+    assert any("arch-lm" in m.lower() and "heterocedasticidade" in m.lower() for m in d.motivos)
+
+
+def test_diagnose_reprova_por_ausencia_de_testes_de_residuo(serie):
+    """Convergiu, AIC finito, parametro normal -- mas o R nao devolveu os
+    p-valores de residuo (ex.: versao antiga do script, ou falha isolada no
+    calculo). Isso reprova, mas por um motivo *diferente* do de premissa
+    violada: aqui nao ha confirmacao de nada, so falta de informacao."""
+    fit = ModelFit("arima", True, {"ar1": 0.3}, 900.0, -1800.0)
+    d = models.diagnose(fit, serie)
+    assert d.aprovado is False
+    motivo_ausencia = [m for m in d.motivos if "ausencia de informacao" in m]
+    assert motivo_ausencia, d.motivos
+    # o motivo de ausencia nao pode se confundir com o de violacao de premissa
+    assert not any("rejeita" in m.lower() for m in d.motivos)
+
+
+def test_diagnose_reprova_ajuste_com_autocorrelacao_residual_forte():
+    """Violacao inequivoca e real (nao fabricada): GARCH fixa a media em
+    zero por especificacao (nao modela autocorrelacao nenhuma), entao
+    alimentado com uma serie AR(1) de phi alto toda a autocorrelacao da
+    media sobra nos residuos padronizados. O Ljung-Box tem de flagrar isso
+    e diagnose() tem de reprovar citando qual premissa falhou."""
+    rng = np.random.default_rng(5)
+    n = 500
+    ruido = rng.normal(0, 0.01, n)
+    ret = np.empty(n)
+    ret[0] = ruido[0]
+    for i in range(1, n):
+        ret[i] = 0.85 * ret[i - 1] + ruido[i]
+    precos = 100 * np.exp(np.cumsum(ret))
+    idx = pd.date_range("2020-01-01", periods=n, freq="B")
+    serie_ar1 = pd.Series(precos, index=idx)
+
+    fit = models.fit_model(serie_ar1, "garch")
+    assert fit.convergiu is True
+    assert fit.ljung_box_pvalor is not None
+
+    d = models.diagnose(fit, serie_ar1)
+    assert d.aprovado is False
+    assert any("ljung-box" in m.lower() and "autocorrela" in m.lower() for m in d.motivos)
 
 
 # --- backtest ------------------------------------------------------------

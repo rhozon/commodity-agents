@@ -145,6 +145,46 @@ def test_garch_vol_por_regime_e_estrutural_nao_condicional_recente():
 
 # --- Achado 3: timeout do subprocess tinha que virar RuntimeError em pt-br -
 
+# --- Correcao final: diagnosticos de residuo (Ljung-Box e ARCH-LM) --------
+
+def _retornos_ar1_forte(n=500, seed=5, phi=0.85, sigma=0.01):
+    """AR(1) de phi alto: autocorrelacao forte e inequivoca na media, algo
+    que um modelo de volatilidade pura (garch, media fixada em zero) nunca
+    captura -- usada para forcar uma rejeicao real do Ljung-Box."""
+    rng = np.random.default_rng(seed)
+    ruido = rng.normal(0, sigma, n)
+    y = np.empty(n)
+    y[0] = ruido[0]
+    for i in range(1, n):
+        y[i] = phi * y[i - 1] + ruido[i]
+    return y.tolist()
+
+
+def test_pvalores_de_residuo_presentes_nas_tres_familias():
+    for familia, retornos in (
+        ("msgarch", _retornos_com_dois_regimes()),
+        ("garch", _retornos_garch_agrupados()),
+        ("arima", _retornos_com_dois_regimes()),
+    ):
+        saida = rbridge.chamar_r("fit_model.R", {"familia": familia, "retornos": retornos})
+        assert saida["convergiu"] is True
+        for campo in ("ljung_box_pvalor", "arch_lm_pvalor"):
+            assert campo in saida, f"{campo} ausente para familia={familia}"
+            assert math.isfinite(saida[campo]), f"{campo} nao finito para familia={familia}"
+            assert 0.0 <= saida[campo] <= 1.0, f"{campo} fora de [0,1] para familia={familia}"
+
+
+def test_garch_em_serie_ar1_forte_reprova_no_ljung_box():
+    """GARCH so modela variancia (media fixada em zero na especificacao);
+    alimentado com uma serie AR(1) de autocorrelacao forte, a estrutura de
+    media inteira sobra nos residuos padronizados -- o Ljung-Box tem de
+    flagrar isso com p-valor bem abaixo de qualquer limiar usual."""
+    saida = rbridge.chamar_r("fit_model.R", {
+        "familia": "garch", "retornos": _retornos_ar1_forte()})
+    assert saida["convergiu"] is True
+    assert saida["ljung_box_pvalor"] < 0.01
+
+
 def test_timeout_vira_runtime_error_em_portugues():
     with pytest.raises(RuntimeError) as e:
         rbridge.chamar_r("fit_model.R", {
