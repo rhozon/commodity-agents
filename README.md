@@ -9,8 +9,8 @@ sozinhos -- decidem qual funcao do nucleo chamar e quando recuar de modelo.
 **Resultado:** veja [examples/milho.md](examples/milho.md) e
 [examples/soja.md](examples/soja.md) -- relatorios gerados pelo proprio
 sistema (`run.py --fake-llm`, cache congelado, sem chamada de API), com o
-modelo que passou (ou nao) no crivo do Critico e o backtest que sustenta a
-leitura.
+modelo que passou (ou nao) no crivo do Critico e o backtest que ilustra a
+leitura -- **uma** janela de origem fixa com 20 pontos, sem rolling origin.
 
 ## Como funciona
 
@@ -79,6 +79,16 @@ campo `Backtest.nota` existe para que o relatorio nunca leia esse empate
 como derrota: ele distingue por escrito "empatou por construcao" de "o
 refit nao convergiu e caiu na referencia", que sao causas opostas para o
 mesmo silencio.
+
+**Ate onde essa banda vai, exatamente.** A largura e a volatilidade
+condicional corrente escalada por raiz de `h`, nao a previsao de variancia
+multi-passo do modelo: num GARCH a variancia h-passos-a-frente reverte a
+media de longo prazo, e essa reversao **nao esta capturada** aqui. A
+diferenca e material quando a volatilidade corrente esta longe da
+estrutural -- nos exemplos publicados, 0.0121 contra 0.0173. Fechar a lacuna
+exige `ugarchforecast`, o que mudaria a banda de todos os resultados ja
+publicados; fica registrado, nao implementado (ver a docstring de
+`agro.models.backtest`).
 
 ## A trava anti-alucinacao (e suas limitacoes)
 

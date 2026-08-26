@@ -230,6 +230,24 @@ def backtest(serie: pd.Series, familia: str, horizonte: int = 20) -> Backtest:
     devolvem previsao de retorno zero por construcao -- isso empata de
     proposito com a referencia no ponto previsto, o ganho deles esta na
     cobertura do intervalo, nao no MAPE/RMSE do ponto.
+
+    LIMITACAO DA BANDA -- a largura NAO e a variancia multi-passo do modelo.
+    Ela e calculada como `Z_IC_95 * vol_atual * sqrt(h) * P_T`: a
+    volatilidade condicional CORRENTE escalada por raiz de h, que e a
+    aproximacao de passeio aleatorio na variancia. Num GARCH a variancia
+    h-passos-a-frente reverte a media de longo prazo e o intervalo acumulado
+    e a SOMA das variancias condicionais previstas, nao `h` copias da
+    corrente. A reversao a media, portanto, nao esta capturada aqui, e a
+    diferenca e material quando a volatilidade corrente esta longe da
+    estrutural (nos exemplos publicados, 0.0121 contra 0.0173). Fechar essa
+    lacuna exige `ugarchforecast` (e o equivalente no MSGARCH), o que muda a
+    banda de todos os resultados ja publicados -- fica registrado, nao
+    implementado.
+
+    LIMITACAO DO DESENHO -- e UMA janela de origem fixa, com `horizonte`
+    pontos. Nao ha rolling origin: a cobertura e o MAPE medidos aqui saem de
+    um unico corte da serie e ilustram o comportamento do modelo, nao o
+    estimam com precisao.
     """
     valores = serie.to_numpy(dtype=float)
     if len(valores) <= horizonte + MIN_OBS:
