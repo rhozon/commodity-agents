@@ -38,7 +38,7 @@ from agents.econometrician import Econometrista
 from agents.llm import LLM
 from agents.writer import Redator
 from agro import config, data, guard, models, report
-from agro.types import RunResult
+from agro.types import CorpoRelatorio, RunResult
 
 # Ver ponto 2 na docstring do modulo: uma tentativa extra de redacao e barata
 # e provavelmente resolve uma falha da trava anti-alucinacao. Nao usa
@@ -60,7 +60,7 @@ def _serie_principal(bundle) -> pd.Series:
     return df["cbot"].astype(float)
 
 
-def _escrever_com_retentativa(llm: LLM, res: RunResult) -> str:
+def _escrever_com_retentativa(llm: LLM, res: RunResult) -> CorpoRelatorio:
     """Chama o Redator ate `MAX_TENTATIVAS_REDACAO` vezes.
 
     So retenta quando a FALHA e da trava anti-alucinacao (`NumeroInventado`/

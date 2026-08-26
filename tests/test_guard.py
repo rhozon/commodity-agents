@@ -2,7 +2,14 @@ import pandas as pd
 import pytest
 
 from agro import guard, report
-from agro.types import Backtest, Diagnosis, ModelFit, RunResult, SeriesBundle
+from agro.types import (
+    Backtest,
+    CorpoRelatorio,
+    Diagnosis,
+    ModelFit,
+    RunResult,
+    SeriesBundle,
+)
 
 
 @pytest.fixture
@@ -84,9 +91,11 @@ def test_trava_valida_corpo_do_redator_nao_o_markdown_montado(resultado):
     # baixo nao demonstraria mais a propriedade. A propriedade testada e a
     # mesma: numero da MOLDURA nao esta em valores_permitidos().
     resultado.tentativas = 7
-    corpo = "O MAPE foi de 4.53% e o preco atual e 62.75."
-    # O corpo isolado passa.
-    guard.verificar_numeros(corpo, resultado)
+    corpo = CorpoRelatorio(previsao="O MAPE foi de 4.53% e o preco atual e 62.75.",
+                           drivers="Sem numero novo aqui.",
+                           implicacao="Nem aqui.")
+    # O corpo isolado passa -- as tres camadas juntas, que e o que a trava ve.
+    guard.verificar_numeros(corpo.texto_completo(), resultado)
 
     md = report.render_report(resultado, corpo)
     # O markdown final contem "Tentativas: 7." (numero de tentativas), que
@@ -399,7 +408,9 @@ def test_escala_percentual_so_vale_com_o_simbolo(parquet):
 def test_render_report_recusa_corpo_com_numero_inventado(parquet):
     res = _fabricar(parquet)
     with pytest.raises(guard.NumeroInventado):
-        report.render_report(res, "O preco vai subir 37.9% no trimestre.")
+        report.render_report(res, CorpoRelatorio(
+            previsao="O preco vai subir 37.9% no trimestre.",
+            drivers="", implicacao=""))
 
 
 # --- MENOR: contratos documentados sem teste --------------------------

@@ -35,7 +35,13 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from agro.guard import verificar_numeros  # noqa: E402
-from agro.types import Backtest, ModelFit, RunResult, SeriesBundle  # noqa: E402
+from agro.types import (  # noqa: E402
+    Backtest,
+    CorpoRelatorio,
+    ModelFit,
+    RunResult,
+    SeriesBundle,
+)
 
 
 def plot_series(bundle: SeriesBundle, destino: str) -> str:
@@ -142,14 +148,20 @@ def _veredito_backtest(b: Backtest) -> str:
     return "o modelo nao superou o passeio aleatorio no ponto previsto"
 
 
-def render_report(res: RunResult, corpo_md: str) -> str:
+def render_report(res: RunResult, corpo: CorpoRelatorio) -> str:
     """Monta o markdown final. O corpo vem do Redator; a moldura e nossa.
 
+    `corpo` traz UMA CAMADA POR CAMPO e cada uma vai para a sua secao. Antes,
+    o Redator devolvia um texto so e as secoes "Drivers" e "Implicacao de
+    decisao" eram carimbos fixos ("Ver decomposicao no corpo acima.") --
+    tres titulos e uma camada, num relatorio que se anuncia em tres camadas.
+
     A PRIMEIRA coisa que acontece aqui e a trava anti-alucinacao rodar sobre
-    `corpo_md`. Antes, o contrato "chame `verificar_numeros` antes de montar o
-    relatorio" vivia so em prosa nas docstrings -- e a forma mais facil de
-    burlar uma trava e nao chama-la. Com a chamada aqui dentro, a omissao
-    deixou de ser possivel por esquecimento.
+    as tres camadas juntas (`corpo.texto_completo()`). Antes, o contrato
+    "chame `verificar_numeros` antes de montar o relatorio" vivia so em prosa
+    nas docstrings -- e a forma mais facil de burlar uma trava e nao
+    chama-la. Com a chamada aqui dentro, a omissao deixou de ser possivel
+    por esquecimento.
 
     A trava roda sobre o CORPO, nunca sobre o markdown montado: a moldura
     imprime numeros deterministicos (`res.tentativas`, por exemplo) que nao
@@ -159,7 +171,7 @@ def render_report(res: RunResult, corpo_md: str) -> str:
     Levanta `guard.NumeroInventado` (ou `guard.NumeroAmbiguo`) e nao devolve
     markdown nenhum quando o corpo cita numero sem origem.
     """
-    verificar_numeros(corpo_md, res)
+    verificar_numeros(corpo.texto_completo(), res)
 
     linhas = [
         f"# {res.commodity.capitalize()} — analise quantitativa",
@@ -187,9 +199,9 @@ def render_report(res: RunResult, corpo_md: str) -> str:
         # uma reescrita de string em `run.py` fazendo o mesmo por fora.
         linhas += [f"![Serie de {res.commodity}]({Path(res.grafico).name})", ""]
 
-    linhas += ["## Previsao", "", corpo_md, "", "## Drivers", "",
-               "Ver decomposicao no corpo acima.", "", "## Implicacao de decisao", "",
-               "Este relatorio informa; a decisao e humana.", ""]
+    linhas += ["## Previsao", "", corpo.previsao, "",
+               "## Drivers", "", corpo.drivers, "",
+               "## Implicacao de decisao", "", corpo.implicacao, ""]
 
     linhas += _formatar_volatilidade(res.fit)
     linhas += _formatar_testes_residuo(res)

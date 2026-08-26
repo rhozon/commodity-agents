@@ -11,7 +11,26 @@ import pandas as pd
 import pytest
 
 from agro import report
-from agro.types import Backtest, Diagnosis, ModelFit, RunResult, SeriesBundle
+from agro.types import (
+    Backtest,
+    CorpoRelatorio,
+    Diagnosis,
+    ModelFit,
+    RunResult,
+    SeriesBundle,
+)
+
+
+def _corpo(texto: str = "corpo") -> CorpoRelatorio:
+    """As tres camadas que o Redator devolve, uma por campo do esquema.
+
+    Cada camada carrega um texto distinto para que os testes consigam provar
+    que ela chegou na SUA secao -- com um texto so, um relatorio que
+    imprimisse a previsao nas tres secoes passaria despercebido.
+    """
+    return CorpoRelatorio(previsao=texto,
+                          drivers=f"{texto} -- camada de drivers",
+                          implicacao=f"{texto} -- camada de implicacao")
 
 
 @pytest.fixture
@@ -117,16 +136,32 @@ def test_plot_series_gera_png(resultado, tmp_path):
 
 
 def test_render_report_tem_as_tres_camadas(resultado):
-    md = report.render_report(resultado, "corpo do analista")
+    md = report.render_report(resultado, _corpo("corpo do analista"))
     for cabecalho in ("## Previsao", "## Drivers", "## Implicacao de decisao"):
         assert cabecalho in md
     assert "corpo do analista" in md
 
 
+def test_cada_camada_cai_na_sua_secao(resultado):
+    """Tres camadas de verdade, nao tres titulos: "Drivers" e "Implicacao de
+    decisao" eram carimbos fixos que apontavam de volta para a primeira
+    secao. Cada campo do `CorpoRelatorio` tem de aparecer sob o seu proprio
+    cabecalho, e na ordem."""
+    corpo = CorpoRelatorio(previsao="camada um", drivers="camada dois",
+                           implicacao="camada tres")
+    md = report.render_report(resultado, corpo)
+
+    assert md.index("## Previsao") < md.index("camada um") < md.index("## Drivers")
+    assert md.index("## Drivers") < md.index("camada dois") < md.index("## Implicacao de decisao")
+    assert md.index("## Implicacao de decisao") < md.index("camada tres")
+    # Os carimbos antigos nao podem voltar.
+    assert "Ver decomposicao no corpo acima" not in md
+
+
 def test_render_report_declara_teto_estourado(resultado):
     resultado.teto_estourado = True
     resultado.tentativas = 3
-    md = report.render_report(resultado, "corpo")
+    md = report.render_report(resultado, _corpo())
     assert "teto de tentativas" in md.lower()
 
 
@@ -135,27 +170,27 @@ def test_render_report_declara_o_recuo_de_modelo(resultado):
     quando o teto estourou."""
     resultado.tentativas = 2
     resultado.historico_reprovacoes = ["msgarch: o ajuste nao convergiu: MSGARCH nao convergiu"]
-    md = report.render_report(resultado, "corpo")
+    md = report.render_report(resultado, _corpo())
     assert "## Recuo de modelo" in md
     assert "msgarch" in md
     assert "nao convergiu" in md
 
 
 def test_render_report_sem_secao_de_recuo_quando_aprovou_de_primeira(resultado):
-    md = report.render_report(resultado, "corpo")
+    md = report.render_report(resultado, _corpo())
     assert "## Recuo de modelo" not in md
 
 
 def test_render_report_lista_troca_de_fonte(resultado):
     resultado.bundle.trocas_de_fonte = ["CEPEA indisponivel; seguiu so com CBOT"]
-    md = report.render_report(resultado, "corpo")
+    md = report.render_report(resultado, _corpo())
     assert "CEPEA indisponivel" in md
 
 
 def test_render_report_mostra_nota_do_backtest(bundle, fit_arima, diagnosis,
                                                 backtest_empate_construcao):
     res = _resultado(bundle, fit_arima, diagnosis, backtest_empate_construcao)
-    md = report.render_report(res, "corpo")
+    md = report.render_report(res, _corpo())
     assert backtest_empate_construcao.nota in md
 
 
@@ -165,7 +200,7 @@ def test_render_report_nao_afirma_derrota_em_empate_por_construcao(
     dizer que o passeio aleatorio venceu o modelo -- isso seria uma leitura
     invertida da teoria (media zero e a especificacao correta)."""
     res = _resultado(bundle, fit_msgarch, diagnosis, backtest_empate_construcao)
-    md = report.render_report(res, "corpo")
+    md = report.render_report(res, _corpo())
     assert not backtest_empate_construcao.bateu_baseline
     baixo = md.lower()
     assert "nao foi batido" not in baixo
@@ -177,21 +212,21 @@ def test_render_report_nao_afirma_derrota_em_empate_por_construcao(
 def test_render_report_distingue_nota_de_refit_nao_convergido(
         bundle, fit_arima, diagnosis, backtest_nao_convergiu):
     res = _resultado(bundle, fit_arima, diagnosis, backtest_nao_convergiu)
-    md = report.render_report(res, "corpo")
+    md = report.render_report(res, _corpo())
     assert "nao convergiu" in md.lower() or "não convergiu" in md.lower()
 
 
 def test_render_report_distingue_nota_de_banda_sem_vol_atual(
         bundle, fit_arima, diagnosis, backtest_sem_vol_atual):
     res = _resultado(bundle, fit_arima, diagnosis, backtest_sem_vol_atual)
-    md = report.render_report(res, "corpo")
+    md = report.render_report(res, _corpo())
     assert "desvio-padrao historico" in md.lower() or "desvio-padrão histórico" in md.lower()
 
 
 def test_render_report_mostra_volatilidade_do_modelo(bundle, fit_msgarch,
                                                        diagnosis, backtest_normal):
     res = _resultado(bundle, fit_msgarch, diagnosis, backtest_normal)
-    md = report.render_report(res, "corpo")
+    md = report.render_report(res, _corpo())
     # vol_por_regime e vol_atual precisam aparecer quando o fit os fornece.
     assert "0.008" in md or "0,008" in md
     assert "0.021" in md or "0,021" in md
@@ -203,17 +238,17 @@ def test_render_report_sem_volatilidade_quando_fit_nao_fornece(
     """fit_arima nao tem vol_por_regime/vol_atual: o relatorio nao deve
     inventar uma secao de volatilidade vazia ou com placeholder."""
     res = _resultado(bundle, fit_arima, diagnosis, backtest_normal)
-    md = report.render_report(res, "corpo")
+    md = report.render_report(res, _corpo())
     assert "vol_atual" not in md  # nome de campo cru nao deve vazar pro texto
 
 
 def test_render_report_mostra_pvalores_de_residuo(resultado):
-    md = report.render_report(resultado, "corpo")
+    md = report.render_report(resultado, _corpo())
     assert "0.41" in md or "0,41" in md  # ljung_box_pvalor
     assert "0.27" in md or "0,27" in md  # arch_lm_pvalor
 
 
 def test_render_report_funciona_sem_backtest(bundle, fit_arima, diagnosis):
     res = _resultado(bundle, fit_arima, diagnosis, None)
-    md = report.render_report(res, "corpo")
+    md = report.render_report(res, _corpo())
     assert "## Previsao" in md

@@ -50,7 +50,44 @@ def test_redator_falha_se_inventar_numero(tmp_path):
                     ModelFit("msgarch", True, {"a": 0.01}, 900.0, -1800.0),
                     Diagnosis(True, [], {}), Backtest(20, 4.53, 3.21, 0.9, 5.10, 3.80), 1, False,
                     numeros={"preco_atual": 62.75})
-    llm = LLMFake([{"corpo": "O preco sobe 37.9% ate dezembro.", "confianca": "media"}])
+    llm = LLMFake([{"previsao": "O preco sobe 37.9% ate dezembro.",
+                    "drivers": "d", "implicacao": "i", "confianca": "media"}])
+    with pytest.raises(guard.NumeroInventado):
+        Redator(llm).escrever(res)
+
+
+def test_redator_devolve_as_tres_camadas_separadas(tmp_path):
+    """O esquema tem um campo por camada: com um campo so, duas das tres
+    secoes do relatorio viravam carimbo fixo."""
+    p = tmp_path / "s.parquet"
+    pd.DataFrame({"cbot": [1, 2, 3]}).to_parquet(p)
+    res = RunResult("milho", "?",
+                    SeriesBundle("milho", "2020-01-01", "2020-06-16", ["cbot"], 120, str(p)),
+                    ModelFit("msgarch", True, {"a": 0.01}, 900.0, -1800.0),
+                    Diagnosis(True, [], {}), Backtest(20, 4.53, 3.21, 0.9, 5.10, 3.80), 1, False,
+                    numeros={"preco_atual": 62.75})
+    llm = LLMFake([{"previsao": "camada um", "drivers": "camada dois",
+                    "implicacao": "camada tres", "confianca": "media"}])
+    corpo = Redator(llm).escrever(res)
+    assert (corpo.previsao, corpo.drivers, corpo.implicacao) == (
+        "camada um", "camada dois", "camada tres")
+    # A trava vale sobre o texto inteiro, nao so sobre a primeira camada.
+    assert "camada tres" in corpo.texto_completo()
+
+
+def test_trava_vale_para_todas_as_camadas(tmp_path):
+    """Numero inventado na TERCEIRA camada tem de derrubar do mesmo jeito:
+    separar o esquema em tres campos nao pode abrir uma porta lateral."""
+    p = tmp_path / "s.parquet"
+    pd.DataFrame({"cbot": [1, 2, 3]}).to_parquet(p)
+    res = RunResult("milho", "?",
+                    SeriesBundle("milho", "2020-01-01", "2020-06-16", ["cbot"], 120, str(p)),
+                    ModelFit("msgarch", True, {"a": 0.01}, 900.0, -1800.0),
+                    Diagnosis(True, [], {}), Backtest(20, 4.53, 3.21, 0.9, 5.10, 3.80), 1, False,
+                    numeros={"preco_atual": 62.75})
+    llm = LLMFake([{"previsao": "sem numero", "drivers": "sem numero",
+                    "implicacao": "O preco sobe 37.9% ate dezembro.",
+                    "confianca": "media"}])
     with pytest.raises(guard.NumeroInventado):
         Redator(llm).escrever(res)
 
