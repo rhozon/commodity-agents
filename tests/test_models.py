@@ -193,6 +193,20 @@ def test_serie_degenerada_reprova_com_motivo_e_nao_levanta():
     assert any("aic" in m.lower() for m in d.motivos), d.motivos
 
 
+def test_preco_nao_positivo_erra_em_portugues_antes_de_chamar_o_r(monkeypatch):
+    """Sem a guarda, `np.log(0)` vira `-inf`, `json.dumps` escreve o literal
+    `-Infinity` (que nao existe em JSON), o jsonlite recusa e o usuario ve um
+    RuntimeError do R longe da causa real."""
+    def _explode(*a, **k):
+        raise AssertionError("nao deveria chegar a chamar o R com preco invalido")
+    monkeypatch.setattr(models.rbridge, "chamar_r", _explode)
+    idx = pd.date_range("2020-01-01", periods=200, freq="B")
+    com_zero = pd.Series([100.0] * 199 + [0.0], index=idx)
+
+    with pytest.raises(ValueError, match="menor ou igual a zero"):
+        models.fit_model(com_zero, "garch")
+
+
 def test_fit_model_nomeia_parametro_nao_finito_em_vez_de_descartar(monkeypatch, serie):
     """Parametro NaN/Inf nao pode sumir junto com os nao numericos: se
     sumisse, `parametros` ficaria vazio, o teste de magnitude nem rodaria e o

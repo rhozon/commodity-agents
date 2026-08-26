@@ -52,7 +52,28 @@ ALPHA_TESTES_RESIDUO = 0.05
 
 
 def _retornos(serie: pd.Series) -> np.ndarray:
-    return np.diff(np.log(serie.to_numpy(dtype=float)))
+    """Log-retornos da serie de precos.
+
+    O preco tem de ser estritamente positivo. Sem esta guarda, `np.log` de um
+    zero ou negativo produz `-inf`/`nan`, `json.dumps` os escreve como os
+    literais `-Infinity`/`NaN`, que nao existem em JSON, o jsonlite recusa a
+    entrada e o usuario ve um `RuntimeError` obscuro vindo do R -- longe da
+    causa, que e um dado ruim na serie.
+    """
+    valores = serie.to_numpy(dtype=float)
+    if not np.all(np.isfinite(valores)):
+        raise ValueError(
+            "a serie de precos tem valor ausente ou nao finito: o log-retorno "
+            "so existe para preco valido"
+        )
+    if (valores <= 0).any():
+        primeiro = int(np.argmax(valores <= 0))
+        raise ValueError(
+            f"a serie de precos tem valor menor ou igual a zero (posicao "
+            f"{primeiro}, valor {valores[primeiro]:g}): o log-retorno exige "
+            f"preco estritamente positivo"
+        )
+    return np.diff(np.log(valores))
 
 
 def _num(valor) -> float | None:
