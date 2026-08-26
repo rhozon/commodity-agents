@@ -156,6 +156,12 @@ class TestRunResultValoresPermitidos:
             + len(result.diagnosis.testes)  # 2
             + 6  # backtest: mape, rmse, cobertura_ic, horizonte(float), mape_baseline, rmse_baseline
             + 1  # bundle.n_obs
+            + 2  # fit.log_lik e fit.aic: existiam em ModelFit e nao chegavam
+            #      aqui, o que PROIBIA o Redator de citar o AIC do proprio
+            #      ajuste que o relatorio descreve.
+            + 1  # nivel_ic (0.95): cobertura_ic guarda a cobertura OBSERVADA,
+            #      nunca o nivel do intervalo -- sem isto "intervalo de 95%"
+            #      era tratado como numero inventado.
         )
         permitidos = result.valores_permitidos()
         # Sem colisões, esperamos exatamente esse número
