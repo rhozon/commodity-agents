@@ -98,6 +98,50 @@ COMO CADA DECISAO DE DESENHO SE SUSTENTA
 
 Formatos de numero aceitos: brasileiro (decimal com virgula) e ingles
 (decimal com ponto), com ou sem separador de milhar.
+
+
+LIMITACOES -- O QUE ESTA TRAVA NAO FAZ
+---------------------------------------
+Uma leitura otimista desta docstring superestimaria a protecao. Registrado
+aqui porque isso so existia antes no relatorio de uma revisao manual, que
+nao viaja com o codigo.
+
+- PROVENIENCIA DE DIGITO, NAO VINCULO SEMANTICO. A trava confere se o
+  DIGITO citado existe em algum resultado do nucleo -- ela nao confere se a
+  GRANDEZA a que o Redator atribui esse digito e a mesma grandeza de onde o
+  digito veio. "o preco subiu 3%" PASSA quando `backtest.rmse = 3.21` e o
+  unico valor autorizado perto de 3, porque "3" escrito com zero casas
+  decimais afirma tolerancia de +-0.5 (decisao 1) e 3.21 cai dentro dela --
+  mesmo RMSE e "o preco subiu X%" sendo duas grandezas sem nenhuma relacao.
+  A trava nao sabe, e nao tem como saber sem entender a frase, que o numero
+  citado deveria vir de uma variacao percentual de preco e nao de um erro
+  de previsao.
+
+- INTEIROS CURTOS SAO ESTRUTURALMENTE LIVRES. Todo numero escrito SEM casa
+  decimal herda a tolerancia larga da decisao 1 (+-0.5 de qualquer valor
+  autorizado). Com um `RunResult` realista de MSGARCH (varios parametros,
+  AIC, log-verossimilhanca, horizonte, MAPE, RMSE, n_obs etc.), isso libera
+  algo da ordem de DEZ inteiros distintos -- um por valor autorizado, mais
+  os que caem no meio do caminho entre dois valores proximos -- que o
+  Redator pode citar em QUALQUER contexto de prosa sem que a trava reclame.
+  Nao ha correcao facil: apertar a tolerancia de inteiros quebraria a
+  decisao 1 (tolerancia pela precisao ESCRITA) para todo numero curto
+  legitimo.
+
+- NADA IMPEDE TROCAR O ROTULO. "o RMSE do backtest foi 4.53" passa mesmo que
+  4.53 seja o MAPE, nao o RMSE -- a trava so confere se o numero existe em
+  ALGUM lugar de `valores_rotulados()`, nao se o rotulo que o texto atribui
+  a ele bate com o rotulo verdadeiro. Trocar duas grandezas de mesmo valor
+  (ou de valores que colidem por tolerancia) e invisivel para este modulo.
+
+- ESCOPO E SO NUMERO. A trava nao verifica direcao (alta vs. queda), unidade
+  (R$ vs. USD, nivel vs. variacao) nem coerencia entre frases do mesmo
+  corpo -- so se cada numero, isolado, tem alguma origem no nucleo.
+
+Quem le esta docstring e conclui que nenhum numero fabricado passa esta
+lendo mais protecao do que a que existe. A trava fecha o canal de digito
+totalmente inventado (a maioria das alucinacoes reais); ela nao fecha
+digito real com significado trocado.
 """
 import re
 
@@ -127,16 +171,24 @@ _NUM = re.compile(
 # nunca e milhar (grupo de milhar nao comeca com zero).
 _MILHAR_DE_UM_GRUPO = re.compile(r"^[1-9]\d{0,2}([.,])\d{3}$")
 
+# Nomes de familia de modelo conhecidos do projeto (ver `ESCADA_MODELOS` em
+# `config.py`). A mascara de ordem de modelo so reconhece ESTES nomes -- um
+# identificador generico ("aumento(50)", "IC(95)") nao e ordem de modelo, e
+# restringir a mascara a nomes conhecidos fecha esse canal sem quebrar
+# "GARCH(1,1)". `(?i:...)` porque o Redator pode escrever em qualquer caixa.
+_NOME_MODELO = r"(?i:msgarch|garch|arima)"
+
 # Formas RIGIDAS cujos numeros sao literais, nao grandezas a conferir. A
 # rigidez e deliberada: mes 01-12, dia 01-31, ano 19xx/20xx, ordem de modelo
-# com no maximo dois digitos -- nenhum valor arbitrario cabe aqui dentro.
+# com no maximo dois digitos e nome de familia conhecido -- nenhum valor
+# arbitrario cabe aqui dentro.
 _MASCARAS = tuple(re.compile(p) for p in (
     r"(?<!\d)(?:19|20)\d{2}[-/](?:0[1-9]|1[0-2])[-/](?:0[1-9]|[12]\d|3[01])(?!\d)",
     r"(?<!\d)(?:0[1-9]|[12]\d|3[01])[-/](?:0[1-9]|1[0-2])[-/](?:19|20)\d{2}(?!\d)",
     r"(?<!\d)(?:0[1-9]|1[0-2])[-/](?:19|20)\d{2}(?!\d)",          # 03/2024
     r"(?<!\d)(?:19|20)\d{2}\s*[-–/]\s*(?:19|20)\d{2}(?!\d)",  # 2020-2025
     r"(?<!\d)(?:19|20)\d{2}\s*/\s*\d{2}(?!\d)",                    # safra 2024/25
-    r"\b[A-Za-z][A-Za-z0-9\-]*\(\s*\d{1,2}(?:\s*,\s*\d{1,2})*\s*\)",  # GARCH(1,1)
+    rf"\b{_NOME_MODELO}\(\s*\d{{1,2}}(?:\s*,\s*\d{{1,2}})*\s*\)",  # GARCH(1,1)
 ))
 
 # Percentuais redondos que funcionam como ancora retorica em portugues --
@@ -151,10 +203,20 @@ _PERCENTUAIS_RETORICOS = {0.0, 50.0, 100.0}
 # afirmacao quantitativa ("cresceu 3%").
 _INTEIROS_PEQUENOS = {1.0, 2.0, 3.0}
 
-# Preposicao de data imediatamente antes do numero.
+# Preposicao de data imediatamente antes do numero. Inclui "a" e "e" porque
+# sao as duas construcoes idiomaticas de periodo em portugues ("de 2015 a
+# 2024", "entre 2015 e 2024") -- sem elas, prosa correta sobre a janela
+# amostral era derrubada por alarme falso, e o consumidor e um laco de nova
+# tentativa com teto (falso positivo recorrente esgota tentativas). O "("
+# cobre citacao academica ("Bollerslev (1986)"): o parenteses e contexto de
+# data tanto quanto uma preposicao -- a correcao fica aqui, na lista de
+# contexto, e nao na mascara de ordem de modelo (alargar a mascara para
+# aceitar "Hamilton(1989)" abriria canal para qualquer literal disfarçado
+# de citacao).
 _PREPOSICAO_DE_DATA = re.compile(
-    r"(?<!\w)(?:em|desde|de|do|da|at[eé]|entre|para|no|na|ao|ano|anos|safra"
-    r"|in[ií]cio|inicio|fim|dezembro|janeiro)\s+\Z",
+    r"(?:(?<!\w)(?:em|desde|de|do|da|at[eé]|ao\s+longo\s+de|entre|para|no|na"
+    r"|ao|a|e|ano|anos|safra|in[ií]cio|inicio|fim|dezembro|janeiro)\s+"
+    r"|\(\s*)\Z",
     re.IGNORECASE,
 )
 
@@ -195,9 +257,16 @@ class NumeroAmbiguo(RuntimeError):
     """
 
 
+# "por cento" por extenso e portugues normal ("intervalo de 95 por cento"),
+# tao percentual quanto o glifo "%" -- ver `_seguido_de_percentual`.
+_POR_CENTO = re.compile(r"\s+por\s+cento\b", re.IGNORECASE)
+
+
 def _seguido_de_percentual(fim: int, texto: str) -> bool:
     resto = texto[fim:fim + 2]
-    return resto.startswith("%") or resto.startswith(" %")
+    if resto.startswith("%") or resto.startswith(" %"):
+        return True
+    return bool(_POR_CENTO.match(texto, fim))
 
 
 def _leituras(token: str) -> tuple[list[tuple[float, int]], bool]:
@@ -257,10 +326,27 @@ def extrair_numeros(texto: str) -> list[float]:
 
 
 def _spans_mascarados(texto: str) -> list[tuple[int, int]]:
-    """Trechos cujos numeros sao literais de data ou de ordem de modelo."""
+    """Trechos cujos numeros sao literais de data ou de ordem de modelo.
+
+    A mascara so vale se o CONTEXTO ao redor do trecho inteiro nao denuncia
+    que os numeros ali dentro sao uma grandeza de verdade, e nao uma data: os
+    mesmos tres vetos usados para o ano solto (moeda antes, "%" depois,
+    substantivo de coisa contada depois) tambem cancelam a mascara. Sem isso
+    "2000-2010 observacoes", "2000/25 observacoes" e "10/2000 observacoes"
+    sao o mesmo contrabando de "2000 observacoes" (ver `_eh_ano`), so que
+    escapando por dentro da mascara em vez de pelo numero solto.
+    """
     spans = []
     for padrao in _MASCARAS:
-        spans.extend(m.span() for m in padrao.finditer(texto))
+        for m in padrao.finditer(texto):
+            inicio, fim = m.span()
+            if _precedido_de_moeda(inicio, texto):
+                continue
+            if _seguido_de_percentual(fim, texto):
+                continue
+            if _SUBSTANTIVO_CONTADO.match(texto[fim:fim + 24]):
+                continue
+            spans.append((inicio, fim))
     return spans
 
 
@@ -277,7 +363,18 @@ def _eh_ano(valor: float, inicio: int, fim: int, texto: str) -> bool:
         return False
     if _SUBSTANTIVO_CONTADO.match(texto[fim:fim + 24]):
         return False
+    if _inicio_de_linha(inicio, texto):
+        return True
     return bool(_PREPOSICAO_DE_DATA.search(texto, max(0, inicio - 12), inicio))
+
+
+def _inicio_de_linha(inicio: int, texto: str) -> bool:
+    """Ano em inicio de linha, sem preposicao antes, e prosa normal ("2024
+    foi um ano de alta."). Conta o INICIO da linha, nao da frase -- so passa
+    aqui o numero que nao tem nada alem de espaco em branco entre a quebra
+    de linha anterior (ou o inicio do texto) e ele."""
+    ultima_quebra = texto.rfind("\n", 0, inicio)
+    return texto[ultima_quebra + 1:inicio].strip() == ""
 
 
 def _eh_percentual_retorico(valor: float, fim: int, texto: str) -> bool:
