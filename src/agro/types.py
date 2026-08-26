@@ -4,6 +4,15 @@ from typing import Literal
 
 Familia = Literal["msgarch", "garch", "arima"]
 
+# Nivel do intervalo de previsao usado no backtest. `models.Z_IC_95 = 1.96` e
+# o quantil de 97,5%: as duas caudas somam 5%, entao a banda e de 95%. A
+# constante vive aqui (e nao e importada de `models`) porque `models` importa
+# `types` -- o caminho inverso seria ciclo. Ela entra em `valores_rotulados()`
+# porque `cobertura_ic` guarda a cobertura OBSERVADA (ex.: 0.90) e nunca o
+# NIVEL do intervalo: sem isto a trava anti-alucinacao proibiria o Redator de
+# escrever "intervalo de 95%", que e um fato deterministico do pipeline.
+NIVEL_IC = 0.95
+
 
 @dataclass(frozen=True)
 class Commodity:
@@ -110,17 +119,47 @@ class RunResult:
     numeros: dict[str, float] = field(default_factory=dict)
     relatorio_md: str = ""
 
-    def valores_permitidos(self) -> set[float]:
-        """Todo numero que o Redator pode citar."""
-        vals: set[float] = set(self.numeros.values())
-        vals.update(self.fit.parametros.values())
-        vals.update(self.fit.vol_por_regime)
+    def valores_rotulados(self) -> list[tuple[str, float]]:
+        """Todo numero que o Redator pode citar, COM o rotulo de onde ele vem.
+
+        O rotulo existe para a mensagem de erro da trava anti-alucinacao
+        (`guard.verificar_numeros`): uma lista crua de floats nao diz ao
+        Redator qual grandeza ele confundiu, e o consumidor da mensagem e um
+        laco de nova tentativa que precisa saber o que corrigir.
+
+        `fit.aic` e `fit.log_lik` entram aqui porque citar o AIC e coisa
+        natural num relatorio econometrico -- sem eles a trava PROIBIA o
+        Redator de mencionar o criterio de informacao do proprio ajuste que o
+        relatorio esta descrevendo. Sao `None` quando o ajuste nao convergiu,
+        e so entram quando existem.
+        """
+        vals: list[tuple[str, float]] = [
+            (f"numeros.{k}", float(v)) for k, v in self.numeros.items()
+        ]
+        vals += [(f"fit.parametros.{k}", float(v))
+                 for k, v in self.fit.parametros.items()]
+        vals += [(f"fit.vol_por_regime[{i + 1}]", float(v))
+                 for i, v in enumerate(self.fit.vol_por_regime)]
         if self.fit.vol_atual is not None:
-            vals.add(float(self.fit.vol_atual))
-        vals.update(self.diagnosis.testes.values())
+            vals.append(("fit.vol_atual", float(self.fit.vol_atual)))
+        if self.fit.log_lik is not None:
+            vals.append(("fit.log_lik", float(self.fit.log_lik)))
+        if self.fit.aic is not None:
+            vals.append(("fit.aic", float(self.fit.aic)))
+        vals += [(f"diagnosis.testes.{k}", float(v))
+                 for k, v in self.diagnosis.testes.items()]
         if self.backtest:
             b = self.backtest
-            vals.update({b.mape, b.rmse, b.cobertura_ic, float(b.horizonte),
-                         b.mape_baseline, b.rmse_baseline})
-        vals.add(float(self.bundle.n_obs))
+            vals += [("backtest.horizonte", float(b.horizonte)),
+                     ("backtest.mape", float(b.mape)),
+                     ("backtest.rmse", float(b.rmse)),
+                     ("backtest.cobertura_ic", float(b.cobertura_ic)),
+                     ("backtest.mape_baseline", float(b.mape_baseline)),
+                     ("backtest.rmse_baseline", float(b.rmse_baseline))]
+        vals.append(("bundle.n_obs", float(self.bundle.n_obs)))
+        vals.append(("nivel_ic", NIVEL_IC))
         return vals
+
+    def valores_permitidos(self) -> set[float]:
+        """Todo numero que o Redator pode citar, sem rotulo."""
+        return {valor for _, valor in self.valores_rotulados()}

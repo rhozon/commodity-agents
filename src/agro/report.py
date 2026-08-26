@@ -34,6 +34,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
+from agro.guard import verificar_numeros  # noqa: E402
 from agro.types import Backtest, ModelFit, RunResult, SeriesBundle  # noqa: E402
 
 
@@ -113,7 +114,24 @@ def _veredito_backtest(b: Backtest) -> str:
 
 
 def render_report(res: RunResult, corpo_md: str) -> str:
-    """Monta o markdown final. O corpo vem do Redator; a moldura e nossa."""
+    """Monta o markdown final. O corpo vem do Redator; a moldura e nossa.
+
+    A PRIMEIRA coisa que acontece aqui e a trava anti-alucinacao rodar sobre
+    `corpo_md`. Antes, o contrato "chame `verificar_numeros` antes de montar o
+    relatorio" vivia so em prosa nas docstrings -- e a forma mais facil de
+    burlar uma trava e nao chama-la. Com a chamada aqui dentro, a omissao
+    deixou de ser possivel por esquecimento.
+
+    A trava roda sobre o CORPO, nunca sobre o markdown montado: a moldura
+    imprime numeros deterministicos (`res.tentativas`, por exemplo) que nao
+    estao em `valores_permitidos()`, e conferi-los derrubaria a execucao por
+    um numero correto. Ver `guard.py`, secao ESCOPO.
+
+    Levanta `guard.NumeroInventado` (ou `guard.NumeroAmbiguo`) e nao devolve
+    markdown nenhum quando o corpo cita numero sem origem.
+    """
+    verificar_numeros(corpo_md, res)
+
     linhas = [
         f"# {res.commodity.capitalize()} — analise quantitativa",
         "",
