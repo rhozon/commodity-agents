@@ -1,0 +1,177 @@
+# Analista de Commodities Multiagente
+
+Quatro agentes respondem a uma pergunta sobre preco de milho ou soja com um
+relatorio em tres camadas: previsao, drivers e implicacao de decisao. A
+econometria (MSGARCH/GARCH/ARIMA, diagnostico de residuo, backtest) roda em
+R; os agentes vivem em Python, conversam com um LLM e nao sabem econometria
+sozinhos -- decidem qual funcao do nucleo chamar e quando recuar de modelo.
+
+**Resultado:** veja [examples/milho.md](examples/milho.md) e
+[examples/soja.md](examples/soja.md) -- relatorios gerados pelo proprio
+sistema (`run.py --fake-llm`, cache congelado, sem chamada de API), com o
+modelo que passou (ou nao) no crivo do Critico e o backtest que sustenta a
+leitura.
+
+## Como funciona
+
+| Agente | Decide |
+|---|---|
+| Coletor | quais series a pergunta exige, e com que janela |
+| Econometrista | qual familia de modelo tentar |
+| Critico | se o ajuste presta -- e **reprova, com motivo** (nao usa LLM) |
+| Redator | como contar, em tres camadas -- sob a trava anti-alucinacao |
+
+```mermaid
+flowchart LR
+    P([pergunta]) --> C[Coletor]
+    C -->|fetch_series| E[Econometrista]
+    E -->|fit_model via R| K{Critico}
+    K -->|reprovado, recua o modelo| E
+    K -->|aprovado ou teto de 3| R[Redator]
+    R --> G[/trava anti-alucinacao/]
+    G --> D([relatorio])
+```
+
+O laco vive entre Econometrista e Critico: reprovado, o modelo recua na
+escada `msgarch -> garch -> arima`, ate passar ou estourar o teto de 3
+tentativas. Quando estoura, o relatorio **declara que estourou** -- o texto
+final traz o ultimo ajuste tentado, sem nenhuma comparacao de AIC ou
+verossimilhanca entre as tentativas, e um aviso explicito para ler com
+reserva. O Critico nao "acha" que o ajuste esta bom: ele roda os testes
+abaixo e reprova com motivo escrito, sempre.
+
+### Diagnostico de residuo: o que faz o Critico checar premissa de verdade
+
+Alem de convergencia, AIC finito e magnitude de parametro, o Critico
+(`agro.models.diagnose`) roda dois testes classicos sobre o residuo do
+ajuste, ao nivel de significancia de 5%:
+
+- **Ljung-Box** -- autocorrelacao remanescente no residuo. P-valor abaixo do
+  limiar significa que o modelo nao capturou toda a estrutura temporal da
+  serie.
+- **ARCH-LM** -- heterocedasticidade nao capturada. P-valor abaixo do limiar
+  significa que ainda ha agrupamento de volatilidade que o modelo deixou
+  passar.
+
+A **ausencia** de um p-valor (o R nao devolveu, por exemplo porque o ajuste
+nao convergiu) reprova por um motivo *diferente* e explicito -- ausencia de
+informacao nao e a mesma coisa que confirmar que a premissa foi violada, e
+misturar os dois enganaria quem le o relatorio. Os dois testes aparecem na
+secao "## Testes de residuo" do relatorio sempre que o R os devolveu.
+
+### Modelo de volatilidade empata com o passeio aleatorio -- por construcao
+
+MSGARCH e GARCH tem media zero na especificacao: a previsao de RETORNO e
+zero em qualquer horizonte, por desenho, nao por falha do ajuste. Isso
+empata o MAPE/RMSE do ponto previsto com o passeio aleatorio (o backtest
+compara os dois lado a lado de proposito -- MAPE sem referencia nao diz se o
+modelo presta). A contribuicao real de um modelo de volatilidade esta na
+**largura do intervalo de confianca**, calculada a partir da volatilidade
+condicional (`vol_atual`) que o modelo estimou, nao no valor pontual. O
+campo `Backtest.nota` existe para que o relatorio nunca leia esse empate
+como derrota: ele distingue por escrito "empatou por construcao" de "o
+refit nao convergiu e caiu na referencia", que sao causas opostas para o
+mesmo silencio.
+
+## A trava anti-alucinacao (e suas limitacoes)
+
+O corpo do relatorio (secao "Previsao") e escrito por um LLM; tudo o mais no
+pipeline e deterministico. `agro.guard.verificar_numeros` varre todo numero
+do texto do Redator e confere cada um contra os valores calculados pelo
+nucleo (`RunResult.valores_rotulados()`); numero sem origem levanta
+`NumeroInventado` (ou `NumeroAmbiguo`, quando um separador de milhar deixa
+duas leituras possiveis) e interrompe a execucao -- **e melhor falhar alto
+do que publicar um numero fabricado**. A chamada vive na primeira linha de
+`report.render_report`, antes de montar qualquer coisa: pular a trava por
+esquecimento deixou de ser possivel.
+
+A tolerancia e pela **precisao escrita**, nao por epsilon fixo: um numero
+com `k` casas decimais so passa se for arredondamento correto de algum valor
+autorizado *nessa* precisao. Escrever mais casas passou a ser mais exigente,
+nao menos.
+
+Prometer mais do que a peca entrega e pior do que a limitacao, entao aqui
+vai a limitacao por escrito (ver a docstring completa em `src/agro/guard.py`
+para a lista inteira):
+
+- **Proveniencia de digito, nao vinculo semantico.** A trava confere se o
+  DIGITO existe em algum resultado do nucleo -- nao se a GRANDEZA a que o
+  Redator o atribui e a mesma de onde ele veio. "o preco subiu 3%" passa se
+  `backtest.rmse = 3.21` for o unico valor perto de 3, mesmo RMSE e "preco
+  subiu X%" nao tendo relacao nenhuma entre si.
+- **Inteiros curtos sao estruturalmente livres.** Todo numero escrito sem
+  casa decimal herda a tolerancia larga de +-0.5 de qualquer valor
+  autorizado -- com um `RunResult` realista isso libera da ordem de dez
+  inteiros distintos que o Redator pode citar em qualquer contexto de prosa.
+- **Nada impede trocar o rotulo.** "o RMSE do backtest foi 4.53" passa mesmo
+  que 4.53 seja o MAPE, nao o RMSE.
+- **Escopo e so numero.** A trava nao verifica direcao (alta vs. queda),
+  unidade (R$ vs. USD) nem coerencia entre frases do mesmo corpo.
+
+A trava fecha o canal do numero totalmente inventado -- a maioria das
+alucinacoes reais. Ela nao fecha o digito real com significado trocado.
+
+## Rodar
+
+Requer Python 3.14+, R 4.4+ com `MSGARCH`, `rugarch`, `forecast` e
+`jsonlite`.
+
+```bash
+pip install -r requirements.txt
+
+# demonstracao, sem chave de API e sem rede (usa o cache congelado em cache/)
+python run.py --commodity milho --pergunta "o que move o preco?" --fake-llm
+
+# execucao real
+set ANTHROPIC_API_KEY=...
+python run.py --commodity soja --pergunta "o que move o preco nos proximos 3 meses?"
+```
+
+Se o `Rscript.exe` nao estiver no PATH (comum no Windows -- ele nao entra no
+PATH por padrao mesmo com o R instalado), a variavel `AGRO_RSCRIPT` resolve:
+
+```bash
+set AGRO_RSCRIPT=C:\Program Files\R\R-4.4.1\bin\Rscript.exe
+```
+
+Sem a variavel, `agro.config.rscript_path()` tenta um caminho padrao fixo
+(`C:\Program Files\R\R-4.4.1\bin\Rscript.exe`) e levanta `FileNotFoundError`
+com essa mesma instrucao se nao achar o executavel em nenhum dos dois
+lugares.
+
+## O cache congelado
+
+`cache/*.parquet` (e o `*_meta.json` irmao de cada um) sao **versionados de
+proposito**. Isso e o que faz a suite inteira rodar sem rede e o grafico
+publicado em `examples/` nao mudar sozinho quando o mercado se move. Para
+atualizar a janela:
+
+```bash
+python scripts/congelar_cache.py
+```
+
+O script baixa do Yahoo Finance as series publicas de milho (`ZC=F`), soja
+(`ZS=F`) e cambio (`BRL=X`) -- e a **unica** parte do projeto que precisa de
+rede. O coletor do CEPEA (preco domestico) levanta `ConnectionError` de
+proposito nesta versao; a troca de fonte fica registrada no `_meta.json` e
+aparece no relatorio como um aviso ("Fonte trocada: CEPEA indisponivel
+...") -- isso e esperado, nao e um erro do script.
+
+## Testes
+
+```bash
+python -m pytest -v
+```
+
+Nenhum teste toca a rede ou gasta credito de API: o cache em `cache/` e
+versionado e o LLM e substituido por um fake (`agents.llm.LLMFake`, ou o
+roteador por prompt que `run.py --fake-llm` usa por baixo). O teste de fumaca
+(`tests/test_smoke.py`) sobe o processo `run.py` de ponta a ponta para milho
+e soja e confere que o cache existe e que o relatorio sai com as secoes
+esperadas.
+
+## Dados
+
+Yahoo Finance (CBOT e cambio) e CEPEA (preco domestico, nao implementado
+nesta versao -- ver secao do cache acima). Series publicas, nenhum dado de
+cliente.
