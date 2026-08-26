@@ -39,6 +39,7 @@ from agro.types import (  # noqa: E402
     Backtest,
     CorpoRelatorio,
     ModelFit,
+    NIVEL_IC,
     RunResult,
     SeriesBundle,
 )
@@ -209,9 +210,16 @@ def render_report(res: RunResult, corpo: CorpoRelatorio) -> str:
     if res.backtest:
         b = res.backtest
         veredito = _veredito_backtest(b)
+        # Cobertura SEM o nivel nominal e exatamente o defeito que este
+        # projeto ataca em outro contexto: "1.00" nao diz nada sozinho. Com o
+        # nivel (95%), o n e a resolucao (1/n, o menor passo que a cobertura
+        # medida pode dar), 1.00 sobre 20 pontos num intervalo de 95% se le
+        # como o que e -- indicio de banda larga demais, nao sucesso.
         linhas += ["## Backtest", "",
                    f"Horizonte de {b.horizonte} passos. Modelo: MAPE {b.mape:.2f}%, "
                    f"RMSE {b.rmse:.4f}. Passeio aleatorio: MAPE {b.mape_baseline:.2f}%, "
-                   f"RMSE {b.rmse_baseline:.4f}. Cobertura do intervalo "
-                   f"{b.cobertura_ic:.2f}. Em resumo, {veredito}.", ""]
+                   f"RMSE {b.rmse_baseline:.4f}. "
+                   f"Cobertura do intervalo de {NIVEL_IC:.0%}: {b.cobertura_ic:.2f} "
+                   f"({b.horizonte} pontos, resolucao {1 / b.horizonte:.2f}). "
+                   f"Em resumo, {veredito}.", ""]
     return "\n".join(linhas)
