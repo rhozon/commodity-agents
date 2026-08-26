@@ -34,11 +34,18 @@ flowchart LR
 
 O laco vive entre Econometrista e Critico: reprovado, o modelo recua na
 escada `msgarch -> garch -> arima`, ate passar ou estourar o teto de 3
-tentativas. Quando estoura, o relatorio **declara que estourou** -- o texto
-final traz o ultimo ajuste tentado, sem nenhuma comparacao de AIC ou
-verossimilhanca entre as tentativas, e um aviso explicito para ler com
-reserva. O Critico nao "acha" que o ajuste esta bom: ele roda os testes
+tentativas. O Critico nao "acha" que o ajuste esta bom: ele roda os testes
 abaixo e reprova com motivo escrito, sempre.
+
+**O relatorio declara o recuo sempre que houve reprovacao**, e nao so quando
+o teto estoura: a secao "## Recuo de modelo" lista cada tentativa reprovada
+com a familia tentada e o motivo. Nos dois exemplos publicados e o que
+mostra que o MSGARCH -- o modelo-assinatura do projeto -- foi tentado
+primeiro e por que ele caiu; sem essa secao, "Tentativas: 2" nao dizia nem
+que ele existiu. Quando o teto **tambem** estoura, entra ainda um aviso
+explicito: o texto final traz o ultimo ajuste tentado, sem nenhuma
+comparacao de AIC ou verossimilhanca entre as tentativas, e deve ser lido
+com reserva.
 
 ### Diagnostico de residuo: o que faz o Critico checar premissa de verdade
 

@@ -130,6 +130,22 @@ def test_render_report_declara_teto_estourado(resultado):
     assert "teto de tentativas" in md.lower()
 
 
+def test_render_report_declara_o_recuo_de_modelo(resultado):
+    """O recuo sai declarado sempre que houve reprovacao -- nao apenas
+    quando o teto estourou."""
+    resultado.tentativas = 2
+    resultado.historico_reprovacoes = ["msgarch: o ajuste nao convergiu: MSGARCH nao convergiu"]
+    md = report.render_report(resultado, "corpo")
+    assert "## Recuo de modelo" in md
+    assert "msgarch" in md
+    assert "nao convergiu" in md
+
+
+def test_render_report_sem_secao_de_recuo_quando_aprovou_de_primeira(resultado):
+    md = report.render_report(resultado, "corpo")
+    assert "## Recuo de modelo" not in md
+
+
 def test_render_report_lista_troca_de_fonte(resultado):
     resultado.bundle.trocas_de_fonte = ["CEPEA indisponivel; seguiu so com CBOT"]
     md = report.render_report(resultado, "corpo")

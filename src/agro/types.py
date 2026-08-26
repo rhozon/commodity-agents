@@ -115,6 +115,15 @@ class Backtest:
 
 @dataclass
 class RunResult:
+    """Resultado de uma execucao completa do pipeline.
+
+    `historico_reprovacoes` guarda uma entrada por tentativa REPROVADA pelo
+    Critico, no formato "familia: motivo; motivo". E o que sustenta o recuo
+    de modelo no relatorio: sem ele, quem le so ve "Tentativas: 2" e nao
+    fica sabendo nem qual familia foi tentada primeiro nem por que ela caiu
+    -- que e exatamente a informacao que o recuo de MSGARCH para GARCH tem a
+    dar. Fica vazio quando o primeiro ajuste passou de primeira.
+    """
     commodity: str
     pergunta: str
     bundle: SeriesBundle
@@ -126,6 +135,7 @@ class RunResult:
     grafico: str = ""
     numeros: dict[str, float] = field(default_factory=dict)
     relatorio_md: str = ""
+    historico_reprovacoes: list[str] = field(default_factory=list)
 
     def valores_rotulados(self) -> list[tuple[str, float]]:
         """Todo numero que o Redator pode citar, COM o rotulo de onde ele vem.

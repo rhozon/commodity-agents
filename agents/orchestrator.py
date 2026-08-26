@@ -137,6 +137,11 @@ def rodar(pergunta: str, commodity: str, llm: LLM, usar_cache: bool = True) -> R
         backtest=bt, tentativas=len(reprovacoes) + (0 if teto_estourado else 1),
         teto_estourado=teto_estourado, grafico=grafico,
         numeros={"preco_final": float(serie.iloc[-1]), "preco_inicial": float(serie.iloc[0])},
+        # A mesma lista que alimenta o prompt do Econometrista viaja para o
+        # relatorio: e ela que faz o recuo de modelo aparecer para quem le.
+        # Descartada, o MSGARCH reprovado sumia do texto final -- e ele e o
+        # modelo-assinatura, a razao declarada de o projeto existir.
+        historico_reprovacoes=list(reprovacoes),
     )
     corpo = _escrever_com_retentativa(llm, res)
     res.relatorio_md = report.render_report(res, corpo)
