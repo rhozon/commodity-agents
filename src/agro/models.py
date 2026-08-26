@@ -4,6 +4,16 @@ O diagnostico e a peca que o Critico usa para reprovar. Ele e deliberadamente
 conservador: na duvida, reprova, porque o custo de um relatorio errado e maior
 que o de uma tentativa a mais.
 
+Alem de convergencia/AIC/magnitude de parametro, `diagnose` checa premissa de
+residuo de verdade: Ljung-Box (autocorrelacao remanescente) e ARCH-LM
+(heterocedasticidade nao capturada), calculados no R (r/fit_model.R) e
+carregados em `ModelFit.ljung_box_pvalor`/`arch_lm_pvalor`. Um p-valor abaixo
+de `ALPHA_TESTES_RESIDUO` reprova por premissa violada, com o motivo
+nomeando qual teste falhou; a AUSENCIA do p-valor (R nao devolveu, por
+exemplo porque o ajuste nao convergiu) reprova por motivo diferente e
+explicito -- ausencia de informacao nao e a mesma coisa que confirmar que a
+premissa foi violada, e misturar os dois enganaria o leitor do relatorio.
+
 Sobre o contrato de saida do R (r/fit_model.R): `vol_por_regime` e a
 volatilidade ESTRUTURAL de longo prazo (mesma semantica nas tres familias);
 `vol_atual` e a volatilidade CONDICIONAL mais recente. Sao grandezas
@@ -34,6 +44,16 @@ MIN_OBS = 100
 # backtest e um intervalo de 95%. Escrito como constante nomeada para nao
 # ficar um 1.96 solto no meio da conta.
 Z_IC_95 = 1.96
+
+# Nivel de significancia dos testes de residuo (Ljung-Box e ARCH-LM) usados
+# em diagnose(). 5% e o nivel convencional para testes de diagnostico de
+# residuo em series temporais aplicadas (Tsay, "Analysis of Financial Time
+# Series"; Enders, "Applied Econometric Time Series") -- conservador o
+# bastante para pegar autocorrelacao/heterocedasticidade relevante sem
+# reprovar ajustes bons por ruido amostral (o que 1% deixaria passar com
+# mais frequencia, e o que 10% reprovaria com falso positivo demais).
+# Constante nomeada para nao virar numero solto dentro de um `if`.
+ALPHA_TESTES_RESIDUO = 0.05
 
 
 def _retornos(serie: pd.Series) -> np.ndarray:
@@ -73,7 +93,9 @@ def fit_model(serie: pd.Series, familia: str) -> ModelFit:
             if isinstance(v, (int, float))}
     return ModelFit(familia, True, pars, saida.get("log_lik"), saida.get("aic"),
                     vol_por_regime=_lista_de_vol(saida.get("vol_por_regime")),
-                    vol_atual=_num(saida.get("vol_atual")))
+                    vol_atual=_num(saida.get("vol_atual")),
+                    ljung_box_pvalor=_num(saida.get("ljung_box_pvalor")),
+                    arch_lm_pvalor=_num(saida.get("arch_lm_pvalor")))
 
 
 def diagnose(fit: ModelFit, serie: pd.Series) -> Diagnosis:
@@ -99,6 +121,45 @@ def diagnose(fit: ModelFit, serie: pd.Series) -> Diagnosis:
         testes["maior_parametro_abs"] = float(maior)
         if maior > 1e4:
             motivos.append("parametro explodiu, ajuste instavel")
+
+    # Testes de residuo (Ljung-Box e ARCH-LM): so fazem sentido quando o
+    # ajuste convergiu -- sem convergencia o R nem calcula residuo, e o
+    # motivo de reprovacao ja e o de nao ter convergido, escrito acima. So
+    # entram aqui os dois casos que a tarefa pede para distinguir por
+    # escrito: p-valor baixo (premissa violada, motivo cita qual) e p-valor
+    # ausente (o R nao devolveu, ausencia de informacao -- nao e o mesmo
+    # que confirmar que a premissa foi violada).
+    if fit.convergiu:
+        testes_ausentes: list[str] = []
+
+        if fit.ljung_box_pvalor is not None:
+            testes["ljung_box_pvalor"] = float(fit.ljung_box_pvalor)
+            if fit.ljung_box_pvalor < ALPHA_TESTES_RESIDUO:
+                motivos.append(
+                    f"Ljung-Box rejeita ausencia de autocorrelacao nos residuos "
+                    f"(p={fit.ljung_box_pvalor:.4f} < {ALPHA_TESTES_RESIDUO}): "
+                    f"o modelo nao capturou toda a estrutura temporal da serie"
+                )
+        else:
+            testes_ausentes.append("Ljung-Box")
+
+        if fit.arch_lm_pvalor is not None:
+            testes["arch_lm_pvalor"] = float(fit.arch_lm_pvalor)
+            if fit.arch_lm_pvalor < ALPHA_TESTES_RESIDUO:
+                motivos.append(
+                    f"ARCH-LM rejeita homocedasticidade dos residuos "
+                    f"(p={fit.arch_lm_pvalor:.4f} < {ALPHA_TESTES_RESIDUO}): "
+                    f"ha heterocedasticidade nao capturada pelo modelo"
+                )
+        else:
+            testes_ausentes.append("ARCH-LM")
+
+        if testes_ausentes:
+            motivos.append(
+                f"o R nao devolveu o(s) teste(s) de residuo "
+                f"{', '.join(testes_ausentes)}: ausencia de informacao, "
+                f"nao violacao de premissa confirmada"
+            )
 
     return Diagnosis(aprovado=not motivos, motivos=motivos, testes=testes)
 

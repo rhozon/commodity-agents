@@ -39,6 +39,14 @@ class ModelFit:
 
     Os campos novos vao depois de `mensagem` para nao quebrar a construcao
     posicional de seis argumentos ja usada nos testes e na propria fachada.
+
+    `ljung_box_pvalor` e `arch_lm_pvalor` sao os diagnosticos de residuo que
+    o Critico usa para checar premissa de verdade (ver `models.diagnose`):
+    autocorrelacao remanescente e heterocedasticidade nao capturada. Vem do
+    R (r/fit_model.R) so quando o ajuste converge; `None` quando o R nao
+    devolveu (ajuste nao convergiu, ou R antigo/degenerado) -- essa ausencia
+    e distinta de um p-valor baixo, e `diagnose` trata os dois casos com
+    motivo diferente.
     """
     familia: Familia
     convergiu: bool
@@ -48,6 +56,8 @@ class ModelFit:
     mensagem: str = ""
     vol_por_regime: list[float] = field(default_factory=list)
     vol_atual: float | None = None
+    ljung_box_pvalor: float | None = None
+    arch_lm_pvalor: float | None = None
 
 
 @dataclass
