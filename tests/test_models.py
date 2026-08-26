@@ -138,3 +138,93 @@ def test_backtest_serie_curta_levanta_erro(serie):
     curta = serie.iloc[:50]
     with pytest.raises(ValueError):
         models.backtest(curta, "arima", horizonte=10)
+
+
+# --- Correcao 1: a volatilidade do R precisa chegar ao ModelFit -------------
+
+
+def test_fit_model_traz_volatilidade_do_r(monkeypatch, serie):
+    """O R calcula vol_por_regime e vol_atual; antes desta correcao os dois
+    morriam na fachada e nunca chegavam ao relatorio."""
+    monkeypatch.setattr(models.rbridge, "chamar_r", lambda *a, **k: {
+        "convergiu": True, "familia": "msgarch", "parametros": {"alpha0_1": 0.01},
+        "log_lik": 900.0, "aic": -1800.0,
+        "vol_por_regime": [0.005, 0.03], "vol_atual": 0.012})
+    fit = models.fit_model(serie, "msgarch")
+    assert fit.vol_por_regime == [0.005, 0.03]
+    assert fit.vol_atual == 0.012
+
+
+def test_fit_model_aceita_vol_por_regime_escalar(monkeypatch, serie):
+    """garch/arima podem devolver um unico numero em vez de lista."""
+    monkeypatch.setattr(models.rbridge, "chamar_r", lambda *a, **k: {
+        "convergiu": True, "familia": "garch", "parametros": {"omega": 1e-6},
+        "log_lik": 900.0, "aic": -1800.0,
+        "vol_por_regime": 0.02, "vol_atual": 0.03})
+    fit = models.fit_model(serie, "garch")
+    assert fit.vol_por_regime == [0.02]
+
+
+def test_fit_model_sem_volatilidade_usa_padroes(monkeypatch, serie):
+    monkeypatch.setattr(models.rbridge, "chamar_r", lambda *a, **k: {
+        "convergiu": True, "familia": "arima", "parametros": {"ar1": 0.5},
+        "log_lik": 100.0, "aic": -200.0})
+    fit = models.fit_model(serie, "arima")
+    assert fit.vol_por_regime == []
+    assert fit.vol_atual is None
+
+
+def test_fit_model_descarta_volatilidade_nao_finita(monkeypatch, serie):
+    monkeypatch.setattr(models.rbridge, "chamar_r", lambda *a, **k: {
+        "convergiu": True, "familia": "garch", "parametros": {"omega": 1e-6},
+        "log_lik": 900.0, "aic": -1800.0,
+        "vol_por_regime": [0.01, None], "vol_atual": float("nan")})
+    fit = models.fit_model(serie, "garch")
+    assert fit.vol_por_regime == [0.01]
+    assert fit.vol_atual is None
+
+
+# --- Correcao 2: a banda do backtest tem de vir do modelo ajustado ----------
+
+
+def _saida_volatilidade(vol_atual, horizonte=10):
+    """Fabrica uma saida de msgarch convergido com a vol_atual pedida."""
+    def _chamar(*a, **k):
+        return {"convergiu": True, "familia": "msgarch",
+                "parametros": {"alpha0_1": 0.01}, "log_lik": 500.0, "aic": -900.0,
+                "vol_por_regime": [0.01, 0.02], "vol_atual": vol_atual,
+                "previsao": [0.0] * horizonte}
+    return _chamar
+
+
+def test_backtest_banda_usa_vol_atual_do_modelo(monkeypatch, serie):
+    """Com a banda vindo do desvio historico bruto, MSGARCH, GARCH e ARIMA
+    davam a MESMA cobertura_ic e o modelo nao influenciava nada. Vindo do
+    ajuste, a cobertura passa a refletir o modelo mesmo quando a previsao
+    pontual empata com a referencia -- e o que torna verdadeira a frase 'a
+    contribuicao do modelo de volatilidade e o intervalo'."""
+    monkeypatch.setattr(models.rbridge, "chamar_r", _saida_volatilidade(1e-9))
+    apertada = models.backtest(serie, "msgarch", horizonte=10)
+    monkeypatch.setattr(models.rbridge, "chamar_r", _saida_volatilidade(1.0))
+    larga = models.backtest(serie, "msgarch", horizonte=10)
+
+    # mesma previsao pontual nos dois casos: so a banda muda.
+    assert apertada.mape == larga.mape
+    assert apertada.rmse == larga.rmse
+    assert apertada.cobertura_ic == 0.0
+    assert larga.cobertura_ic == 1.0
+
+
+def test_backtest_sem_vol_atual_cai_no_desvio_historico_e_registra(monkeypatch, serie):
+    monkeypatch.setattr(models.rbridge, "chamar_r", lambda *a, **k: {
+        "convergiu": True, "familia": "arima", "parametros": {"ar1": 0.1},
+        "log_lik": 500.0, "aic": -900.0, "previsao": [0.001] * 10})
+    bt = models.backtest(serie, "arima", horizonte=10)
+    assert "historico" in bt.nota.lower()
+
+
+def test_backtest_vol_atual_invalida_cai_no_desvio_historico(monkeypatch, serie):
+    monkeypatch.setattr(models.rbridge, "chamar_r",
+                        _saida_volatilidade(float("nan")))
+    bt = models.backtest(serie, "msgarch", horizonte=10)
+    assert "historico" in bt.nota.lower()

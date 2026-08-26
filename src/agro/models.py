@@ -7,9 +7,10 @@ que o de uma tentativa a mais.
 Sobre o contrato de saida do R (r/fit_model.R): `vol_por_regime` e a
 volatilidade ESTRUTURAL de longo prazo (mesma semantica nas tres familias);
 `vol_atual` e a volatilidade CONDICIONAL mais recente. Sao grandezas
-diferentes e esta fachada nao as mistura -- alias, nenhuma das duas faz parte
-do contrato de `ModelFit` (que so tem parametros/log_lik/aic), entao aqui elas
-simplesmente nao sao extraidas.
+diferentes e esta fachada nao as mistura, mas as duas sao extraidas e viajam
+em `ModelFit` ate `RunResult.valores_permitidos()`. Sem isso elas morriam
+aqui, e a trava anti-alucinacao -- que so deixa citar numero presente nos
+resultados -- acabava PROIBINDO o Redator de mencionar volatilidade.
 
 Para msgarch e garch, `previsao` vem do R como uma lista de zeros por
 construcao: sao modelos de volatilidade com media zero na especificacao, e a
@@ -29,9 +30,31 @@ from agro.types import Backtest, Diagnosis, ModelFit
 
 MIN_OBS = 100
 
+# Quantil normal de 97,5% -- as duas caudas somam 5%, entao a banda do
+# backtest e um intervalo de 95%. Escrito como constante nomeada para nao
+# ficar um 1.96 solto no meio da conta.
+Z_IC_95 = 1.96
+
 
 def _retornos(serie: pd.Series) -> np.ndarray:
     return np.diff(np.log(serie.to_numpy(dtype=float)))
+
+
+def _num(valor) -> float | None:
+    """Converte para float finito, ou None. NaN/inf do R nao passam."""
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        return None
+    f = float(valor)
+    return f if np.isfinite(f) else None
+
+
+def _lista_de_vol(bruto) -> list[float]:
+    """Normaliza `vol_por_regime`: o R manda lista no msgarch e pode mandar
+    escalar nas demais familias (auto_unbox). Aqui vira sempre lista."""
+    if bruto is None:
+        return []
+    itens = bruto if isinstance(bruto, (list, tuple)) else [bruto]
+    return [v for v in (_num(x) for x in itens) if v is not None]
 
 
 def fit_model(serie: pd.Series, familia: str) -> ModelFit:
@@ -48,7 +71,9 @@ def fit_model(serie: pd.Series, familia: str) -> ModelFit:
 
     pars = {k: float(v) for k, v in (saida.get("parametros") or {}).items()
             if isinstance(v, (int, float))}
-    return ModelFit(familia, True, pars, saida.get("log_lik"), saida.get("aic"))
+    return ModelFit(familia, True, pars, saida.get("log_lik"), saida.get("aic"),
+                    vol_por_regime=_lista_de_vol(saida.get("vol_por_regime")),
+                    vol_atual=_num(saida.get("vol_atual")))
 
 
 def diagnose(fit: ModelFit, serie: pd.Series) -> Diagnosis:
@@ -109,6 +134,7 @@ def backtest(serie: pd.Series, familia: str, horizonte: int = 20) -> Backtest:
     saida = rbridge.chamar_r("fit_model.R", {
         "familia": familia, "retornos": ret_treino.tolist(), "horizonte": horizonte})
     previsao = saida.get("previsao")
+    notas: list[str] = []
     if saida.get("convergiu") and previsao is not None and len(previsao) > 0:
         ret_prev = np.asarray(previsao, dtype=float)
         prev = treino[-1] * np.exp(np.cumsum(ret_prev))
@@ -116,9 +142,24 @@ def backtest(serie: pd.Series, familia: str, horizonte: int = 20) -> Backtest:
         prev = base                       # sem previsao do modelo, empata com a referencia
     mape_mod, rmse_mod = _metricas(teste, prev)
 
+    # A banda vem da volatilidade do MODELO AJUSTADO. Com o desvio-padrao
+    # historico bruto dos retornos de treino ela era identica para msgarch,
+    # garch e arima -- nem a cobertura_ic refletia o ajuste, e o modelo
+    # econometrico nao influenciava nada do que saia. So com vol_atual a
+    # frase "a contribuicao do modelo de volatilidade e o intervalo" passa a
+    # ser verdadeira: a previsao pontual empata com a referencia, mas a
+    # cobertura nao.
+    vol_modelo = _num(saida.get("vol_atual"))
+    if vol_modelo is not None and vol_modelo > 0:
+        sigma_banda = vol_modelo
+    else:
+        sigma_banda = sigma
+        notas.append("o modelo nao devolveu vol_atual utilizavel: a banda caiu "
+                     "no desvio-padrao historico dos retornos de treino")
+
     passos = np.arange(1, horizonte + 1)
-    banda = 1.96 * sigma * np.sqrt(passos) * treino[-1]
+    banda = Z_IC_95 * sigma_banda * np.sqrt(passos) * treino[-1]
     dentro = np.abs(teste - prev) <= banda
 
     return Backtest(horizonte, mape_mod, rmse_mod, float(np.mean(dentro)),
-                    mape_base, rmse_base)
+                    mape_base, rmse_base, nota="; ".join(notas))
