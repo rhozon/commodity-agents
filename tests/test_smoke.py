@@ -26,3 +26,12 @@ def test_run_py_gera_relatorio(commodity, tmp_path):
     assert proc.returncode == 0, proc.stderr
     texto = saida.read_text(encoding="utf-8")
     assert "## Previsao" in texto and "## Drivers" in texto
+
+    # O grafico vai para o lado do relatorio pedido, nao para `examples/`:
+    # rodar com `--saida` nao pode sobrescrever o artefato publicado.
+    png = saida.with_suffix(".png")
+    assert png.exists(), "o grafico deveria ser gravado ao lado do relatorio"
+    assert f"({png.name})" in texto
+    # E o markdown referencia a imagem pelo nome, sem caminho absoluto.
+    assert str(RAIZ) not in texto
+    assert str(png.parent) not in texto

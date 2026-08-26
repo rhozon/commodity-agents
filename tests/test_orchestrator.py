@@ -129,6 +129,23 @@ def test_sem_reprovacao_nao_ha_secao_de_recuo(ambiente, monkeypatch):
     assert "## Recuo de modelo" not in res.relatorio_md
 
 
+def test_grafico_vai_para_o_destino_pedido(ambiente, monkeypatch, tmp_path):
+    """`rodar` nao pode gravar em `examples/` ignorando quem chama: uma
+    execucao com `--saida` sobrescrevia o artefato publicado e versionado, e
+    o markdown resultante apontava para um arquivo longe dele."""
+    monkeypatch.setattr(orchestrator.models, "fit_model", lambda s, f: _fit_aprovado(f))
+    monkeypatch.setattr(orchestrator.models, "backtest", lambda s, f: _backtest_falso())
+    destino = tmp_path / "avulso.png"
+
+    res = orchestrator.rodar("p", "milho", _llm(["msgarch"]),
+                             destino_grafico=str(destino))
+
+    assert res.grafico == str(destino)
+    # O markdown referencia a imagem pelo NOME, nunca pelo caminho absoluto.
+    assert "(avulso.png)" in res.relatorio_md
+    assert str(tmp_path) not in res.relatorio_md
+
+
 def test_teto_estourado_marca_e_nao_levanta(ambiente, monkeypatch):
     monkeypatch.setattr(orchestrator.models, "fit_model",
                         lambda s, f: ModelFit(f, False, {}, None, None, "nao convergiu"))

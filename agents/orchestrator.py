@@ -48,6 +48,13 @@ from agro.types import RunResult
 MAX_TENTATIVAS_REDACAO = 2
 
 
+def _grafico_padrao(commodity: str) -> str:
+    """Onde o grafico cai quando quem chama nao escolhe: ao lado do relatorio
+    de exemplo versionado. Quem passa `--saida` recebe o grafico ao lado do
+    proprio relatorio -- ver `destino_grafico` em `rodar`."""
+    return str(config.EXAMPLES_DIR / f"{commodity}.png")
+
+
 def _serie_principal(bundle) -> pd.Series:
     df = pd.read_parquet(bundle.caminho_parquet)
     return df["cbot"].astype(float)
@@ -73,8 +80,17 @@ def _escrever_com_retentativa(llm: LLM, res: RunResult) -> str:
     raise ultimo_erro
 
 
-def rodar(pergunta: str, commodity: str, llm: LLM, usar_cache: bool = True) -> RunResult:
+def rodar(pergunta: str, commodity: str, llm: LLM, usar_cache: bool = True,
+          destino_grafico: str | None = None) -> RunResult:
     """Executa o pipeline completo: Coletor -> laco Econometrista/Critico -> Redator.
+
+    `destino_grafico` e o caminho do PNG da serie. Quem chama deriva esse
+    caminho do destino do RELATORIO, para que a imagem caia ao lado do
+    markdown que a referencia (`report.render_report` emite so o basename).
+    Sem esse parametro, o grafico ia sempre para `examples/<commodity>.png`:
+    uma execucao com `--saida /tmp/x.md` sobrescrevia o artefato publicado e
+    versionado, e o markdown resultante apontava para um arquivo que nao
+    estava ao lado dele. Omitido, cai no destino de exemplo.
 
     Contrato de saida (consumido pela Task 10):
         - Sempre devolve um `RunResult` ou levanta excecao -- nunca devolve
@@ -131,7 +147,7 @@ def rodar(pergunta: str, commodity: str, llm: LLM, usar_cache: bool = True) -> R
     except ValueError:
         bt = None
 
-    grafico = report.plot_series(bundle, str(config.EXAMPLES_DIR / f"{commodity}.png"))
+    grafico = report.plot_series(bundle, destino_grafico or _grafico_padrao(commodity))
     res = RunResult(
         commodity=commodity, pergunta=pergunta, bundle=bundle, fit=fit, diagnosis=diag,
         backtest=bt, tentativas=len(reprovacoes) + (0 if teto_estourado else 1),

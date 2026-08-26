@@ -104,22 +104,19 @@ def main() -> int:
     a = p.parse_args()
 
     llm: LLM = _LLMDemonstracao(a.commodity) if a.fake_llm else ClaudeLLM()
-    res = rodar(a.pergunta, a.commodity, llm)
 
+    # O destino do relatorio manda no destino do grafico: o markdown
+    # referencia a imagem pelo nome (`report.render_report` emite o
+    # basename), entao a imagem tem de cair ao lado dele. Assim
+    # `--saida /tmp/x.md` escreve `/tmp/x.png` em vez de sobrescrever o
+    # artefato publicado em `examples/`.
     destino = Path(a.saida) if a.saida else config.EXAMPLES_DIR / f"{a.commodity}.md"
     destino.parent.mkdir(parents=True, exist_ok=True)
 
-    # `report.render_report` (agro/report.py, fora do escopo desta tarefa)
-    # embute o caminho ABSOLUTO do grafico -- correto para quem roda
-    # localmente, mas quebra a imagem de quem le o relatorio no GitHub ou
-    # depois de mover a pasta. Como o grafico e sempre salvo ao lado do
-    # relatorio padrao (`examples/<commodity>.png`), trocamos aqui pelo nome
-    # relativo antes de gravar; e so cosmetico, o markdown que passou pela
-    # trava anti-alucinacao nao muda.
-    texto = res.relatorio_md
-    if res.grafico:
-        texto = texto.replace(res.grafico, Path(res.grafico).name)
-    destino.write_text(texto, encoding="utf-8")
+    res = rodar(a.pergunta, a.commodity, llm,
+                destino_grafico=str(destino.with_suffix(".png")))
+
+    destino.write_text(res.relatorio_md, encoding="utf-8")
 
     print(f"modelo: {res.fit.familia} | tentativas: {res.tentativas} | "
           f"teto estourado: {res.teto_estourado}")
