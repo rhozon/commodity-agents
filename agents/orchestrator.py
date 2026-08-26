@@ -88,8 +88,11 @@ def rodar(pergunta: str, commodity: str, llm: LLM, usar_cache: bool = True) -> R
           recuo ou teto estourado) -- nao inclui tentativas de redacao.
         - `res.teto_estourado` e `True` quando as `config.MAX_TENTATIVAS`
           tentativas se esgotam sem aprovacao do Critico; mesmo assim o
-          relatorio SAI, com o melhor ajuste obtido (o da ultima tentativa)
-          e o aviso explicito no corpo do markdown.
+          relatorio SAI, com o ULTIMO ajuste tentado (a escada e uma
+          progressao fixa -- proximo degrau ainda nao tentado -- sem
+          nenhuma comparacao de AIC ou verossimilhança entre as tentativas;
+          o que sobra nao e necessariamente o melhor ajuste possivel) e o
+          aviso explicito no corpo do markdown.
         - `res.backtest` e `None` quando a serie e curta demais para o
           horizonte do backtest (`models.backtest` levanta `ValueError`);
           o relatorio se comporta bem nesse caso (secao "## Backtest" so

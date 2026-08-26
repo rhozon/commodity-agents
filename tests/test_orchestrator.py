@@ -7,7 +7,7 @@ from agents import orchestrator
 from agents.econometrician import Econometrista
 from agents.llm import LLMFake
 from agro import guard
-from agro.types import ModelFit, SeriesBundle
+from agro.types import Backtest, ModelFit, SeriesBundle
 
 
 @pytest.fixture
@@ -46,11 +46,35 @@ def _fit_aprovado(familia, log_lik=900.0, aic=-1800.0):
                     ljung_box_pvalor=0.6, arch_lm_pvalor=0.7)
 
 
+# Achado 3: `models.backtest` dispara `Rscript.exe` de verdade e custa
+# segundos por chamada. Nos testes cujo alvo e o laco de critica (nao o
+# backtest), o resultado nem e verificado -- so o custo do subprocesso R
+# fica, sem comprar garantia nenhuma. Este fake mocka `models.backtest` para
+# esses testes; o UNICO teste que ainda chama o R de verdade e o de caminho
+# feliz abaixo (achado 2), que e quem de fato confere `res.backtest`.
+def _backtest_falso(horizonte=20, mape=1.5, rmse=0.4, cobertura_ic=0.95,
+                    mape_baseline=2.1, rmse_baseline=0.5, nota=""):
+    return Backtest(horizonte, mape, rmse, cobertura_ic, mape_baseline, rmse_baseline, nota)
+
+
 def test_caminho_feliz_uma_tentativa(ambiente, monkeypatch):
+    """Achado 2: unico teste que verifica `res.backtest` no caminho em que o
+    backtest FUNCIONA (os outros seis testes deste arquivo mockam
+    `models.backtest` -- ver achado 3 -- porque o backtest e incidental a
+    eles). `models.backtest` nao e mockado aqui de proposito: e o unico
+    teste de integracao real com o R que a suite mantem."""
     monkeypatch.setattr(orchestrator.models, "fit_model", lambda s, f: _fit_aprovado(f))
     res = orchestrator.rodar("o que move o preco?", "milho", _llm(["msgarch"]))
     assert res.tentativas == 1 and res.teto_estourado is False
     assert res.diagnosis.aprovado and res.relatorio_md
+
+    assert res.backtest is not None
+    bt = res.backtest
+    assert bt.horizonte == 20
+    assert bt.mape >= 0.0 and bt.rmse >= 0.0
+    assert bt.mape_baseline >= 0.0 and bt.rmse_baseline >= 0.0
+    assert 0.0 <= bt.cobertura_ic <= 1.0
+    assert "## Backtest" in res.relatorio_md
 
 
 def test_reprovacao_faz_recuar_de_modelo(ambiente, monkeypatch):
@@ -59,6 +83,7 @@ def test_reprovacao_faz_recuar_de_modelo(ambiente, monkeypatch):
             return ModelFit(familia, False, {}, None, None, "nao convergiu")
         return _fit_aprovado(familia, 800.0, -1600.0)
     monkeypatch.setattr(orchestrator.models, "fit_model", fit)
+    monkeypatch.setattr(orchestrator.models, "backtest", lambda s, f: _backtest_falso())
 
     res = orchestrator.rodar("p", "milho", _llm(["msgarch", "garch"]))
     assert res.tentativas == 2
@@ -69,10 +94,28 @@ def test_reprovacao_faz_recuar_de_modelo(ambiente, monkeypatch):
 def test_teto_estourado_marca_e_nao_levanta(ambiente, monkeypatch):
     monkeypatch.setattr(orchestrator.models, "fit_model",
                         lambda s, f: ModelFit(f, False, {}, None, None, "nao convergiu"))
+    monkeypatch.setattr(orchestrator.models, "backtest", lambda s, f: _backtest_falso())
     res = orchestrator.rodar("p", "milho", _llm(["msgarch", "garch", "arima"]))
     assert res.tentativas == 3
     assert res.teto_estourado is True
     assert "teto de tentativas" in res.relatorio_md.lower()
+
+
+def test_aviso_teto_estourado_nao_promete_selecao_de_melhor_ajuste(ambiente, monkeypatch):
+    """Achado 1: a escada de `Econometrista.escolher` e uma progressao fixa
+    -- proximo degrau ainda nao tentado -- sem nenhuma comparacao de AIC ou
+    verossimilhanca entre as tentativas. O que sobra quando o teto estoura e
+    o ULTIMO ajuste tentado, que pode ser o pior de todos. O aviso nao pode
+    prometer uma selecao ("o melhor ajuste obtido") que o codigo nao faz."""
+    monkeypatch.setattr(orchestrator.models, "fit_model",
+                        lambda s, f: ModelFit(f, False, {}, None, None, "nao convergiu"))
+    monkeypatch.setattr(orchestrator.models, "backtest", lambda s, f: _backtest_falso())
+    res = orchestrator.rodar("p", "milho", _llm(["msgarch", "garch", "arima"]))
+
+    assert res.teto_estourado is True
+    aviso = next(l for l in res.relatorio_md.splitlines() if l.startswith("> **Aviso:**"))
+    assert "melhor" not in aviso.lower(), f"aviso promete selecao inexistente: {aviso!r}"
+    assert "ultimo ajuste" in aviso.lower()
 
 
 def test_reprovacoes_respeitam_contrato_da_escada(ambiente, monkeypatch):
@@ -88,6 +131,7 @@ def test_reprovacoes_respeitam_contrato_da_escada(ambiente, monkeypatch):
             return ModelFit(familia, False, {}, None, None, "nao convergiu")
         return _fit_aprovado(familia)
     monkeypatch.setattr(orchestrator.models, "fit_model", fit)
+    monkeypatch.setattr(orchestrator.models, "backtest", lambda s, f: _backtest_falso())
 
     chamadas: list[list[str]] = []
     original = Econometrista.escolher
@@ -118,6 +162,7 @@ def test_trava_falha_retenta_e_sucede(ambiente, monkeypatch):
     execucao inteira -- o ajuste de modelo esta bom, so o texto saiu errado,
     e uma nova rodada de LLM e barata."""
     monkeypatch.setattr(orchestrator.models, "fit_model", lambda s, f: _fit_aprovado(f))
+    monkeypatch.setattr(orchestrator.models, "backtest", lambda s, f: _backtest_falso())
     respostas = [
         {"inicio": "2018-01-01", "fim": "2019-12-01", "justificativa": "j"},
         {"familia": "msgarch", "justificativa": "j"},
@@ -138,6 +183,7 @@ def test_trava_falha_esgota_tentativas_e_propaga(ambiente, monkeypatch):
     sem ser capturada -- publicar relatorio com numero alucinado e pior do
     que falhar alto (mesmo principio de `agro.guard`)."""
     monkeypatch.setattr(orchestrator.models, "fit_model", lambda s, f: _fit_aprovado(f))
+    monkeypatch.setattr(orchestrator.models, "backtest", lambda s, f: _backtest_falso())
     respostas = [
         {"inicio": "2018-01-01", "fim": "2019-12-01", "justificativa": "j"},
         {"familia": "msgarch", "justificativa": "j"},

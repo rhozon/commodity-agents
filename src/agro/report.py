@@ -143,7 +143,9 @@ def render_report(res: RunResult, corpo_md: str) -> str:
     ]
     if res.teto_estourado:
         linhas += ["> **Aviso:** o teto de tentativas foi atingido sem ajuste aprovado. "
-                   "O que segue e o melhor ajuste obtido, e deve ser lido com reserva.", ""]
+                   "O que segue e o ultimo ajuste tentado, sem comparacao de AIC ou "
+                   "verossimilhança com as tentativas anteriores, e deve ser lido com "
+                   "reserva.", ""]
     for troca in res.bundle.trocas_de_fonte:
         linhas += [f"> **Fonte trocada:** {troca}", ""]
     if res.grafico:
