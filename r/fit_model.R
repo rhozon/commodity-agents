@@ -90,8 +90,8 @@ resultado <- switch(
       # regime (sqrt(alpha0/(1-alpha1-beta))) -- nao muda a cada observacao
       # nova. vol_atual: volatilidade CONDICIONAL do ultimo instante
       # (mistura dos regimes pesada pela probabilidade filtrada), que
-      # varia a cada nova observacao. Sao duas grandezas diferentes; ver
-      # achado 2 da revisao da Task 3.
+      # varia a cada nova observacao. Sao duas grandezas diferentes e
+      # ficam em campos diferentes de proposito.
       # Residuos padronizados: MSGARCH nao expoe uma funcao de residuos
       # pronta (ver ls("package:MSGARCH")); o residuo padronizado e o
       # retorno dividido pela volatilidade condicional filtrada de cada
@@ -128,7 +128,7 @@ resultado <- switch(
       # vol_por_regime: volatilidade ESTRUTURAL de longo prazo
       # (sqrt(omega/(1-alpha1-beta1))) -- o analogo direto da formula usada
       # no MSGARCH acima, para que o campo signifique a mesma coisa nas
-      # duas familias (achado 2 da revisao da Task 3). vol_atual: a
+      # duas familias. vol_atual: a
       # volatilidade CONDICIONAL do ultimo instante (tail(sigma(ajuste),1)),
       # que muda a cada observacao nova -- e o que o campo vol_por_regime
       # trazia antes da correcao.
@@ -163,7 +163,7 @@ resultado <- switch(
       # "estrutural de longo prazo" e "condicional do ultimo instante" como
       # em msgarch/garch, entao os dois campos usam a mesma medida (o
       # desvio-padrao dos residuos do ajuste), mantida por consistencia de
-      # contrato com as outras familias (achado 2 da revisao da Task 3).
+      # contrato com as outras familias.
       vol_residuos <- as.numeric(sd(residuals(ajuste)))
       # Residuos SIMPLES (nao padronizados): ARIMA e um modelo de media, nao
       # ha volatilidade condicional para padronizar por instante como em

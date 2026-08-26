@@ -1,7 +1,7 @@
 """Grafico da serie e montagem do relatorio em tres camadas.
 
-Le `types.py`/`models.py` no estado ATUAL (pos onda de correcao), nao no
-estado do brief original. Diferencas relevantes:
+Este modulo depende de campos de `types.py` que nao sao obvios a primeira
+leitura. O que cada um significa, e por que o relatorio precisa mostra-lo:
 
 - `ModelFit` ganhou `vol_por_regime` (lista, volatilidade estrutural por
   regime) e `vol_atual` (volatilidade condicional do ultimo instante). Sao a

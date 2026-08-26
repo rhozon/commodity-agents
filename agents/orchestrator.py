@@ -2,8 +2,7 @@
 
 E aqui que o sistema e agentico de verdade. O resto e pipeline.
 
-Duas decisoes de desenho que nao estao no brief original (`.superpowers/sdd/
-task-9-brief.md`) porque o codigo evoluiu depois dele:
+Duas decisoes de desenho deste modulo que nao se leem no codigo sozinhas:
 
 1. CONTRATO DA ESCADA (`Econometrista.escolher`). Cada string em
    `reprovacoes` PRECISA conter o nome da familia reprovada como palavra
@@ -43,8 +42,9 @@ from agro.types import CorpoRelatorio, RunResult
 # Ver ponto 2 na docstring do modulo: uma tentativa extra de redacao e barata
 # e provavelmente resolve uma falha da trava anti-alucinacao. Nao usa
 # `config.MAX_TENTATIVAS` (esse e o teto da escada de MODELO, uma decisao
-# totalmente diferente) nem vive em `agro.config` -- e um parametro do
-# orquestrador, e `agro/` nao pode ser alterado nesta tarefa.
+# totalmente diferente) nem vive em `agro.config` -- o numero de vezes que se
+# repete uma chamada de LLM e politica da camada de agentes, e `agro/` e o
+# nucleo deterministico, que nao sabe que existe LLM.
 MAX_TENTATIVAS_REDACAO = 2
 
 
@@ -92,7 +92,8 @@ def rodar(pergunta: str, commodity: str, llm: LLM, usar_cache: bool = True,
     versionado, e o markdown resultante apontava para um arquivo que nao
     estava ao lado dele. Omitido, cai no destino de exemplo.
 
-    Contrato de saida (consumido pela Task 10):
+    Contrato de saida (o que qualquer chamador -- a CLI, um notebook --
+    pode assumir do `RunResult` devolvido):
         - Sempre devolve um `RunResult` ou levanta excecao -- nunca devolve
           `None` nem um resultado parcialmente preenchido.
         - `res.relatorio_md` so vem no retorno depois de passar pela trava
