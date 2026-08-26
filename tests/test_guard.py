@@ -177,6 +177,30 @@ def test_ano_com_preposicao_de_data_continua_isento(parquet):
     guard.verificar_numeros("Em 2024 o mercado mudou; desde 2015 nao se via isso.", res)
 
 
+def test_periodo_com_a_e_e_e_isento(parquet):
+    """'de 2015 a 2024' e 'entre 2015 e 2024' sao as duas construcoes
+    idiomaticas de periodo em portugues. Sem 'a' e 'e' na lista de
+    preposicao de data, um relatorio correto e derrubado por alarme falso
+    -- e o consumidor e um laco de nova tentativa com teto."""
+    res = _fabricar(parquet)
+    guard.verificar_numeros("A serie vai de 2015 a 2024.", res)
+    guard.verificar_numeros("Entre 2015 e 2024 o mercado mudou.", res)
+
+
+def test_ano_no_inicio_da_linha_e_isento(parquet):
+    """Ano em inicio de frase, sem preposicao antes, e prosa normal."""
+    res = _fabricar(parquet)
+    guard.verificar_numeros("2024 foi um ano de alta.", res)
+
+
+def test_ano_em_citacao_academica_e_isento(parquet):
+    """'Bollerslev (1986)' e citacao, nao dado do nucleo: o ano dentro do
+    parenteses precisa ser isento sem alargar a mascara de ordem de modelo
+    (isso abriria o canal de 'Hamilton(1989)' como literal generico)."""
+    res = _fabricar(parquet)
+    guard.verificar_numeros("Bollerslev (1986) propos o GARCH.", res)
+
+
 # --- CRITICO 2: tolerancia dependente da precisao escrita ------------------
 
 def test_pvalor_com_erro_na_terceira_casa_derruba(parquet):
@@ -199,6 +223,30 @@ def test_arredondamento_na_casa_escrita_passa(parquet):
     agora sem o piso."""
     res = _fabricar(parquet, parametros={"alpha0_1": 0.0134})
     guard.verificar_numeros("O parametro estimado foi 0.013.", res)
+
+
+# --- IMPORTANTE 3: mascaras de data composta nao pulam os vetos ------------
+
+def test_intervalo_de_anos_mascarado_seguido_de_contagem_nao_e_isento(parquet):
+    """'2000-2010 observacoes' e o mesmo contrabando de
+    'test_ano_nao_isenta_contagem_de_observacoes', so que disfarcado de
+    intervalo de anos. A mascara de intervalo pula o veto de substantivo
+    contado se aplicada sem checar o que vem depois do trecho inteiro."""
+    res = _fabricar(parquet, n_obs=1987)
+    with pytest.raises(guard.NumeroInventado):
+        guard.verificar_numeros("A amostra tem 2000-2010 observacoes.", res)
+
+
+def test_safra_mascarada_seguida_de_contagem_nao_e_isenta(parquet):
+    res = _fabricar(parquet, n_obs=1987)
+    with pytest.raises(guard.NumeroInventado):
+        guard.verificar_numeros("A amostra cobre 2000/25 observacoes.", res)
+
+
+def test_mes_ano_mascarado_seguido_de_contagem_nao_e_isento(parquet):
+    res = _fabricar(parquet, n_obs=1987)
+    with pytest.raises(guard.NumeroInventado):
+        guard.verificar_numeros("A amostra tem 10/2000 observacoes.", res)
 
 
 # --- IMPORTANTE 4: sinal de menos sem lookbehind ---------------------------
@@ -253,6 +301,27 @@ def test_assinatura_de_ordem_do_modelo_nao_derruba(parquet):
     guard.verificar_numeros("Ajustamos um GARCH(1,1) sobre os retornos.", res)
 
 
+def test_ordem_de_modelo_com_tres_digitos_nao_e_mascarada(parquet):
+    """A docstring afirma que o teto de dois digitos por posicao e o que
+    impede a mascara de virar canal. '123' nao e uma ordem de modelo
+    plausivel e nao esta nos resultados -- tem que derrubar."""
+    res = _fabricar(parquet)
+    with pytest.raises(guard.NumeroInventado):
+        guard.verificar_numeros("Ajustamos um GARCH(123) sobre os retornos.", res)
+
+
+def test_mascara_de_ordem_nao_aceita_nome_arbitrario(parquet):
+    """A mascara de ordem de modelo e restrita aos nomes de familia do
+    projeto (msgarch/garch/arima) -- 'aumento(50)', 'IC(95)' e 'alta(37)'
+    nao sao ordem de modelo, sao numero de prosa disfarcado de assinatura,
+    e tem que ser conferido normalmente contra os resultados."""
+    res = _fabricar(parquet)
+    with pytest.raises(guard.NumeroInventado):
+        guard.verificar_numeros("O aumento(50) foi observado no periodo.", res)
+    with pytest.raises(guard.NumeroInventado):
+        guard.verificar_numeros("O IC(95) ficou acima do esperado.", res)
+
+
 def test_inteiro_pequeno_seguido_de_percentual_derruba(parquet):
     """O inverso exato do teste aplicado a 0, 50 e 100: 'subiu 2%' e uma
     afirmacao quantitativa e precisa vir do nucleo."""
@@ -286,6 +355,27 @@ def test_nivel_do_intervalo_e_citavel(parquet):
     guard.verificar_numeros("Usamos um intervalo de 95%.", res)
 
 
+def test_percentual_por_extenso_e_reconhecido(parquet):
+    """'por cento' por extenso e portugues normal -- so o glifo '%' era
+    reconhecido, e 'intervalo de 95 por cento' barrava um relatorio
+    correto."""
+    res = _fabricar(parquet)
+    guard.verificar_numeros("Usamos um intervalo de 95 por cento.", res)
+
+
+def test_escala_percentual_barra_vizinhos_de_um_ponto(parquet):
+    """A leitura /100 e comparada com a MESMA tolerancia por precisao escrita
+    das outras leituras (`casas`, nao `casas + 2`). Sem isso, a folga de duas
+    casas extras faz o comparador aceitar qualquer inteiro de 40% a 145% para
+    cobertura_ic=0.90 e nivel_ic=0.95 -- 106 inteiros livres em vez dos dois
+    unicos autorizados. "89%" e "91%" tem que continuar barrando."""
+    res = _fabricar(parquet)
+    with pytest.raises(guard.NumeroInventado):
+        guard.verificar_numeros("A cobertura do intervalo foi de 89%.", res)
+    with pytest.raises(guard.NumeroInventado):
+        guard.verificar_numeros("A cobertura do intervalo foi de 91%.", res)
+
+
 def test_escala_percentual_nao_casa_percentual_com_pvalor(parquet):
     """A leitura /100 so vale contra grandezas guardadas como fracao de 1
     (cobertura do intervalo, nivel do intervalo). Sem essa restricao, um MAPE
@@ -310,6 +400,46 @@ def test_render_report_recusa_corpo_com_numero_inventado(parquet):
     res = _fabricar(parquet)
     with pytest.raises(guard.NumeroInventado):
         report.render_report(res, "O preco vai subir 37.9% no trimestre.")
+
+
+# --- MENOR: contratos documentados sem teste --------------------------
+
+def test_contencao_de_span_mascarado_nao_e_sobreposicao(parquet, monkeypatch):
+    """`verificar_numeros` so pula um numero que esteja TOTALMENTE contido
+    num span mascarado -- contencao (`a <= inicio and fim <= b`), nao
+    sobreposicao. Um numero que so toca a borda do span, comecando antes
+    dele, tem que continuar sendo conferido normalmente contra os
+    resultados. Usa um span mascarado sintetico via monkeypatch porque as
+    mascaras reais tem lookaround que impede construir esse caso por
+    texto."""
+    res = _fabricar(parquet)
+    texto = "O valor foi 999 no periodo."
+    inicio_999 = texto.index("999")
+    fim_999 = inicio_999 + 3
+    # Span que SOBREPOE "999" sem conte-lo: comeca depois do inicio do
+    # token e termina depois do fim dele.
+    span_sobreposto = (inicio_999 + 1, fim_999 + 5)
+    monkeypatch.setattr(guard, "_spans_mascarados", lambda t: [span_sobreposto])
+    with pytest.raises(guard.NumeroInventado):
+        guard.verificar_numeros(texto, res)
+
+
+def test_milhar_de_um_grupo_nao_comeca_com_zero(parquet):
+    """Grupo de milhar nunca comeca com zero (`[1-9]` inicial de
+    `_MILHAR_DE_UM_GRUPO`): '0.123' e sempre um decimal, nunca as duas
+    leituras 123 (milhar) e 0.123 (decimal). Sem essa ancora, o token
+    viraria ambiguo por engano quando as duas leituras coincidissem com
+    valores autorizados."""
+    res = _fabricar(parquet, numeros={"preco_atual": 0.123, "outro": 123.0})
+    guard.verificar_numeros("O indicador ficou em 0.123.", res)
+
+
+def test_extrair_numeros_ambiguo_devolve_leitura_de_milhar_primeiro():
+    """'2.600' isolado (sem contexto que resolva a ambiguidade) sai como
+    leitura de MILHAR (2600) -- a unica leitura que a forma tem quando lida
+    sozinha, ver docstring de `extrair_numeros` -- e nao a leitura decimal
+    (2.6, que seria `leituras[-1]`)."""
+    assert guard.extrair_numeros("A serie tem 2.600 observacoes.") == [2600.0]
 
 
 # --- MENOR 9: mensagem de erro utilizavel pelo laco de nova tentativa -----
