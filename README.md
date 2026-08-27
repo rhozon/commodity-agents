@@ -125,9 +125,6 @@ para a lista inteira):
   casa decimal herda a tolerancia larga de +-0.5 de qualquer valor
   autorizado -- com um `RunResult` realista isso libera da ordem de dez
   inteiros distintos que o Redator pode citar em qualquer contexto de prosa.
-  Cada constante nova autorizada acrescenta um: `Z_IC_95 = 1.96` existe para
-  o texto poder citar o quantil, e o preco e que "2" passou a passar,
-  inclusive marcado ("subiu 2%").
 - **Nada impede trocar o rotulo.** "o RMSE do backtest foi 4.53" passa mesmo
   que 4.53 seja o MAPE, nao o RMSE.
 - **Escopo e so numero.** A trava nao verifica direcao (alta vs. queda),
