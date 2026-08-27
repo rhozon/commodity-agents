@@ -4,17 +4,14 @@ from typing import Literal
 
 Familia = Literal["msgarch", "garch", "arima"]
 
-# Nivel do intervalo de previsao usado no backtest. `Z_IC_95 = 1.96` e o
-# quantil de 97,5%: as duas caudas somam 5%, entao a banda e de 95%. As duas
-# constantes vivem aqui (e nao em `models`) porque `models` importa `types` --
-# o caminho inverso seria ciclo. Elas entram em `valores_rotulados()` porque
-# sao fatos DETERMINISTICOS do pipeline que o Redator tem todo o direito de
-# citar: `cobertura_ic` guarda a cobertura OBSERVADA (ex.: 0.90) e nunca o
-# NIVEL do intervalo, e "o quantil de 1,96" e frase normal em texto
-# econometrico. Sem os dois aqui, a trava anti-alucinacao derrubava a
-# execucao por uma constante correta.
+# Nivel do intervalo de previsao usado no backtest. `models.Z_IC_95 = 1.96` e
+# o quantil de 97,5%: as duas caudas somam 5%, entao a banda e de 95%. A
+# constante vive aqui (e nao e importada de `models`) porque `models` importa
+# `types` -- o caminho inverso seria ciclo. Ela entra em `valores_rotulados()`
+# porque `cobertura_ic` guarda a cobertura OBSERVADA (ex.: 0.90) e nunca o
+# NIVEL do intervalo: sem isto a trava anti-alucinacao proibiria o Redator de
+# escrever "intervalo de 95%", que e um fato deterministico do pipeline.
 NIVEL_IC = 0.95
-Z_IC_95 = 1.96
 
 
 @dataclass(frozen=True)
@@ -202,7 +199,6 @@ class RunResult:
                      ("backtest.rmse_baseline", float(b.rmse_baseline))]
         vals.append(("bundle.n_obs", float(self.bundle.n_obs)))
         vals.append(("nivel_ic", NIVEL_IC))
-        vals.append(("z_ic_95", Z_IC_95))
         return vals
 
     def valores_permitidos(self) -> set[float]:
