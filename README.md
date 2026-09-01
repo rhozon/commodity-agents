@@ -188,6 +188,48 @@ proposito nesta versao; a troca de fonte fica registrada no `_meta.json` e
 aparece no relatorio como um aviso ("Fonte trocada: CEPEA indisponivel
 ...") -- isso e esperado, nao e um erro do script.
 
+## Dois motores de orquestracao, mesmo resultado
+
+O sistema tem duas implementacoes da camada de agentes, e a troca e uma flag:
+
+```bash
+python run.py --commodity milho --pergunta "..." --fake-llm --engine manual     # padrao
+python run.py --commodity milho --pergunta "..." --fake-llm --engine langgraph
+```
+
+- **`manual`** (`agents/orchestrator.py`) -- um laco `for` com `break` e um
+  `try/except`. Nenhuma dependencia de framework.
+- **`langgraph`** (`agents_langgraph/graph.py`) -- o mesmo pipeline como
+  `StateGraph`: cinco nos, duas arestas condicionais, checkpointing com
+  `MemorySaver`.
+
+Os dois usam os **mesmos** quatro agentes e o **mesmo** nucleo em `agro/`. So
+o controle de fluxo muda. `tests/test_paridade.py` roda os dois com a mesma
+entrada e compara campo a campo -- incluindo o markdown final, que sai
+identico byte a byte.
+
+**O que o framework cobrou.** `MemorySaver` serializa o estado a cada no com
+msgpack, e `pandas.Series` nao e serializavel: a primeira versao do grafo
+quebrava com `TypeError: Type is not msgpack serializable`. A saida foi
+manter so o `SeriesBundle` no estado e reler o parquet em cada no que precisa
+da serie. Medido em execucao: **1 leitura de parquet no motor manual, 3 no
+grafo**. Nesta escala o tempo total nao muda de forma perceptivel -- o
+gargalo e o subprocess do R, nao o disco -- mas numa serie grande o custo
+deixaria de ser irrelevante.
+
+**O que o framework comprou.** O estado do pipeline deixa de ser implicito em
+variaveis locais e vira um `TypedDict` declarado; o laco de reprovacao vira
+uma aresta condicional que se le sem seguir o fluxo mentalmente; e o
+checkpointing permite inspecionar e retomar a execucao no meio, coisa que o
+laco a mao nao oferece.
+
+**O preco em codigo:** 54 linhas de codigo no orquestrador a mao contra 120
+no grafo, para o mesmo comportamento.
+
+`langgraph` e `langchain-core` estao em `requirements.txt` mas **so** o motor
+`langgraph` e o teste de paridade dependem deles -- o import e adiado, entao
+quem usar o motor padrao nao precisa te-los instalados.
+
 ## Testes
 
 ```bash
