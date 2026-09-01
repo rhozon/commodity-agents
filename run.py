@@ -30,6 +30,16 @@ from agents.orchestrator import rodar  # noqa: E402
 from agro import config  # noqa: E402
 
 
+def _motor(nome: str):
+    """Escolhe a orquestracao. O import do LangGraph e adiado de proposito:
+    o motor `manual` e o padrao e nao depende do framework, entao quem nao
+    pedir `--engine langgraph` nao precisa te-lo instalado."""
+    if nome == "manual":
+        return rodar
+    from agents_langgraph import rodar as rodar_grafo
+    return rodar_grafo
+
+
 def _corpo_demonstracao(commodity: str) -> dict[str, str]:
     """As tres camadas fixas do modo demonstracao, uma por campo do esquema.
 
@@ -122,6 +132,10 @@ def main() -> int:
     p.add_argument("--saida", default="")
     p.add_argument("--fake-llm", action="store_true",
                    help="usa respostas fixas; nao chama a API nem toca a rede")
+    p.add_argument("--engine", default="manual", choices=["manual", "langgraph"],
+                   help="orquestracao: laco escrito a mao (padrao) ou StateGraph "
+                        "do LangGraph. Os dois produzem o mesmo relatorio -- "
+                        "ver tests/test_paridade.py")
     a = p.parse_args()
 
     llm: LLM = _LLMDemonstracao(a.commodity) if a.fake_llm else ClaudeLLM()
@@ -134,11 +148,12 @@ def main() -> int:
     destino = Path(a.saida) if a.saida else config.EXAMPLES_DIR / f"{a.commodity}.md"
     destino.parent.mkdir(parents=True, exist_ok=True)
 
-    res = rodar(a.pergunta, a.commodity, llm,
-                destino_grafico=str(destino.with_suffix(".png")))
+    res = _motor(a.engine)(a.pergunta, a.commodity, llm,
+                           destino_grafico=str(destino.with_suffix(".png")))
 
     destino.write_text(res.relatorio_md, encoding="utf-8")
 
+    print(f"motor: {a.engine}")
     print(f"modelo: {res.fit.familia} | tentativas: {res.tentativas} | "
           f"teto estourado: {res.teto_estourado}")
     print(f"relatorio: {destino}")
